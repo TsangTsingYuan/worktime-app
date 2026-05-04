@@ -29,7 +29,12 @@ jobs:
 
       - run: flutter pub get
 
-      - run: flutter build web --base-href="/${{ github.event.repository.name }}/"
+      - run: flutter build web --base-href="/${{ github.event.repository.name }}/" --no-source-maps
+
+      - name: Gzip assets for faster delivery
+        run: |
+          find build/web -type f \( -name "*.js" -o -name "*.wasm" -o -name "*.css" -o -name "*.html" -o -name "*.json" \) \
+            -not -name "*.gz" -exec sh -c 'gzip -k -f "$1"' _ {} \;
 
       - uses: actions/upload-pages-artifact@v3
         with:
