@@ -20,10 +20,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadData();
   }
 
-  void _loadData() {
+  Future<void> _loadData() async {
     final user = context.read<AuthProvider>().user;
-    if (user != null) {
-      context.read<WorkLogProvider>().loadTodayLogs(user.id!);
+    if (user == null) return;
+    await context.read<WorkLogProvider>().loadTodayLogs(user.id!);
+    if (mounted) {
+      final activeLog = context.read<WorkLogProvider>().activeLog;
+      if (activeLog != null && activeLog.status == 0) {
+        context.read<TimerProvider>().resumeFromOngoingTask(activeLog);
+      }
     }
   }
 

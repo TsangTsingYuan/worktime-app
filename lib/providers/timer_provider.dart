@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../models/work_log.dart';
 
 enum TimerStatus { idle, running, paused }
 
@@ -42,6 +43,19 @@ class TimerProvider extends ChangeNotifier {
 
   void resume() {
     _status = TimerStatus.running;
+    _startTicking();
+    notifyListeners();
+  }
+
+  /// 从数据库恢复一个进行中的任务计时
+  void resumeFromOngoingTask(WorkLog task) {
+    if (task.id == null || _status != TimerStatus.idle) return;
+    final elapsed = (DateTime.now().millisecondsSinceEpoch - task.startTime) ~/ 1000;
+    _status = TimerStatus.running;
+    _workLogId = task.id;
+    _taskTitle = task.title;
+    _taskCategory = task.category;
+    _elapsedSeconds = elapsed >= 0 ? elapsed : 0;
     _startTicking();
     notifyListeners();
   }

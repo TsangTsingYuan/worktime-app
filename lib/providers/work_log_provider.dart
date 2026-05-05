@@ -65,16 +65,25 @@ class WorkLogProvider extends ChangeNotifier {
 
   Future<void> endTask(int workLogId, int elapsedSeconds) async {
     final now = DateTime.now().millisecondsSinceEpoch;
+    final existing = _todayLogs.firstWhere(
+      (l) => l.id == workLogId,
+      orElse: () => WorkLog(
+        userId: 0,
+        title: '',
+        startTime: now,
+        status: 0,
+      ),
+    );
     final log = WorkLog(
       id: workLogId,
-      userId: _activeLog?.userId ?? 0,
-      title: _activeLog?.title ?? '',
-      category: _activeLog?.category ?? '',
-      startTime: _activeLog?.startTime ?? now,
+      userId: existing.userId,
+      title: existing.title,
+      category: existing.category,
+      startTime: existing.startTime,
       endTime: now,
       duration: elapsedSeconds,
       status: 1,
-      notes: _activeLog?.notes ?? '',
+      notes: existing.notes,
     );
     await _db.updateWorkLog(log);
     _activeLog = null;
