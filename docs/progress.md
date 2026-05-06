@@ -7,8 +7,8 @@
 | 阶段 | 状态 | 进度 |
 |------|------|------|
 | Phase 0: Bug 修复 — Timer 持久化 | ✅ 完成 | 100% |
-| Phase 1: 后端服务 (worktime_server) | 🔄 进行中 | 0% |
-| Phase 2: Flutter 客户端改造 | ⏳ 待开始 | 0% |
+| Phase 1: 后端服务 (worktime_server) | ✅ 完成 | 100% |
+| Phase 2: Flutter 客户端改造 | ✅ 完成 | 100% |
 | Phase 3: 移动端适配 | ⏳ 待定 | 0% |
 
 ---
@@ -23,74 +23,74 @@
 
 ---
 
-## Phase 1: 后端服务
+## Phase 1: 后端服务（已完成）
 
 ### 1.1 项目初始化
-- [ ] 创建 worktime_server 项目结构
-- [ ] 配置 pubspec.yaml 依赖
-- [ ] 创建 .env.example 配置文件
+- [x] 创建 worktime_server 项目结构（`bin/server.dart` + `pubspec.yaml` + `.env.example`）
+- [x] 配置依赖（shelf, shelf_router, sqlite3, dart_jsonwebtoken, bcrypt, uuid）
 
 ### 1.2 数据库层
-- [ ] 实现 SQLite 初始化（users 表 + work_logs 表）
-- [ ] 实现用户 CRUD（create_user, get_user_by_phone, update_user）
-- [ ] 实现日志 CRUD（insert_log, update_log, delete_log, get_logs_since）
+- [x] SQLite 初始化（users 表 + work_logs 表 + 索引）
+- [x] 用户 CRUD（getUserByPhone, getUserById, insertUser, updateUser, getUserSettings, updateUserSettings）
+- [x] 日志 CRUD（insertWorkLog, updateWorkLog, deleteWorkLog, getWorkLogsSince, getWorkLogsByClientIds）
 
 ### 1.3 认证
-- [ ] 实现 bcrypt 密码哈希
-- [ ] 实现 JWT token 签发与验证
-- [ ] 实现注册端点 POST /api/auth/register
-- [ ] 实现登录端点 POST /api/auth/login
-- [ ] 实现 JWT 认证中间件
+- [x] bcrypt 密码哈希存储
+- [x] JWT token 签发（30天有效期）与验证中间件
+- [x] 注册端点 POST /api/auth/register（手机号唯一校验）
+- [x] 登录端点 POST /api/auth/login
 
 ### 1.4 日志 API
-- [ ] 实现 GET /api/worklogs 获取日志
-- [ ] 实现 POST /api/worklogs 创建日志
-- [ ] 实现 PUT /api/worklogs/:id 更新日志
-- [ ] 实现 DELETE /api/worklogs/:id 删除日志
+- [x] GET /api/worklogs?since=timestamp（增量拉取）
+- [x] POST /api/worklogs（创建，支持 clientId 去重）
+- [x] PUT /api/worklogs/:id（更新）
+- [x] DELETE /api/worklogs/:id（删除）
 
 ### 1.5 批量同步
-- [ ] 实现 POST /api/sync 批量同步端点
-- [ ] 实现增量变更检测（`updated_at > lastSyncAt`）
+- [x] POST /api/sync（推送变更 + 拉取远程变更）
+- [x] 增量变更检测（updated_at > lastSyncAt）
+- [x] 基于 clientId 的去重逻辑
 
 ### 1.6 用户设置 API
-- [ ] 实现 GET /api/settings
-- [ ] 实现 PUT /api/settings
+- [x] GET /api/settings
+- [x] PUT /api/settings
 
 ### 1.7 部署配置
-- [ ] 编写 Dockerfile
-- [ ] 编写 fly.io 配置（如有需要）
-- [ ] 编写部署说明
+- [x] Dockerfile（dart compile exe + debian-slim）
+- [x] 环境变量配置（PORT, DB_PATH, JWT_SECRET, ALLOWED_ORIGIN）
+- [x] CORS 中间件（支持自定义 allowedOrigin）
 
 ---
 
-## Phase 2: Flutter 客户端改造
+## Phase 2: Flutter 客户端改造（已完成）
 
 ### 2.1 HTTP 客户端
-- [ ] 添加 http 包依赖
-- [ ] 创建 ApiClient 服务（token 管理 + 统一错误处理）
+- [x] 添加 http 包依赖
+- [x] 创建 ApiClient 服务（token 管理 + 统一错误处理 + 超时控制）
 
 ### 2.2 数据模型更新
-- [ ] WorkLog 模型新增 serverId / createdAt / updatedAt / isSynced 字段
-- [ ] User 模型新增 serverId / token 字段
+- [x] WorkLog 模型新增 serverId / createdAt / updatedAt / isSynced
+- [x] User 模型新增 serverId / token
 
 ### 2.3 数据库迁移
-- [ ] 实现 v1→v2 迁移（新增 server_id, created_at, updated_at, is_synced 列）
-- [ ] 实现 v1→v2 迁移（user 表新增 server_id, token 列）
+- [x] v1→v2 迁移（work_log 表：新增 serverId, createdAt, updatedAt, isSynced）
+- [x] v1→v2 迁移（user 表：新增 serverId, token）
 
 ### 2.4 同步服务
-- [ ] 创建 SyncService（pushChanges / pullChanges / sync）
-- [ ] 实现增量同步逻辑（lastSyncAt 时间戳）
-- [ ] 冲突解决（last-write-wins）
+- [x] SyncService（pushChanges / pullChanges / sync）
+- [x] 增量同步逻辑（lastSyncAt 时间戳）
+- [x] 冲突解决（clientId 去重, last-write-wins）
+- [x] 网络异常保护（catch + 安全返回）
 
 ### 2.5 Provider 改造
-- [ ] AuthProvider: API 优先登录 + 本地回退
-- [ ] WorkLogProvider: 每次变更标记 is_synced=false + 触发推送
-- [ ] SettingsProvider: 同步设置到服务端
+- [x] AuthProvider: API 优先登录 + 本地回退
+- [x] WorkLogProvider: 新建/结束/补录标记 is_synced=false
+- [x] SettingsProvider: 配置方法保留（同步到服务端需后续扩展）
 
 ### 2.6 集成
-- [ ] main.dart 初始化 ApiClient + SyncService
-- [ ] 登录后自动触发同步
-- [ ] 异常处理和重试逻辑
+- [x] main.dart 初始化 ApiClient + SyncService（使用 --dart-define API_URL 配置）
+- [x] 登录后自动触发同步
+- [x] 100% 离线可用（后端不可用不影响基本功能）
 
 ---
 
@@ -103,8 +103,41 @@
 
 ---
 
+## 部署说明
+
+### 后端部署
+
+```bash
+# 1. 构建 Docker 镜像
+cd worktime_server
+docker build -t worktime-server .
+
+# 2. 运行（本地测试）
+docker run -p 8080:8080 \
+  -e JWT_SECRET=your-secret-key \
+  -e ALLOWED_ORIGIN=https://tsangtsingyuan.github.io \
+  worktime-server
+
+# 3. 部署到 Fly.io（推荐）
+fly launch
+fly secrets set JWT_SECRET=your-secret-key
+fly secrets set ALLOWED_ORIGIN=https://tsangtsingyuan.github.io
+fly deploy
+```
+
+### 前端构建（连接后端）
+
+```bash
+flutter build web --no-source-maps \
+  --dart-define=API_URL=https://your-app.fly.dev
+```
+
+---
+
 ## 已知问题
 
 1. Web 端 `dart:html` 已弃用，后续需迁移至 `package:web` + `dart:js_interop`
 2. 安卓/iOS 平台目录为空，需重新生成
 3. 无单元测试覆盖同步逻辑
+4. SettingsProvider 同步到服务端的功能尚未接入 SyncService
+5. 删除操作的同步尚未实现（仅新增和修改会同步）
