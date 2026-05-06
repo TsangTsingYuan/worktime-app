@@ -48,13 +48,17 @@ class WorkLogProvider extends ChangeNotifier {
 
   Future<int> startNewTask(int userId, String title, String category,
       {String notes = ''}) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
     final log = WorkLog(
       userId: userId,
       title: title,
       category: category,
-      startTime: DateTime.now().millisecondsSinceEpoch,
+      startTime: now,
       status: 0,
       notes: notes,
+      createdAt: now,
+      updatedAt: now,
+      isSynced: false,
     );
     final id = await _db.insertWorkLog(log);
     _activeLog = log.copyWith(id: id);
@@ -84,6 +88,10 @@ class WorkLogProvider extends ChangeNotifier {
       duration: elapsedSeconds,
       status: 1,
       notes: existing.notes,
+      serverId: existing.serverId,
+      createdAt: existing.createdAt,
+      updatedAt: now,
+      isSynced: false,
     );
     await _db.updateWorkLog(log);
     _activeLog = null;
@@ -94,6 +102,7 @@ class WorkLogProvider extends ChangeNotifier {
 
   Future<void> addManualLog(int userId, String title, String category,
       int startTime, int endTime, String notes) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
     final log = WorkLog(
       userId: userId,
       title: title,
@@ -103,6 +112,9 @@ class WorkLogProvider extends ChangeNotifier {
       duration: ((endTime - startTime) ~/ 1000),
       status: 1,
       notes: notes,
+      createdAt: now,
+      updatedAt: now,
+      isSynced: false,
     );
     final id = await _db.insertWorkLog(log);
     _todayLogs.insert(0, log.copyWith(id: id));

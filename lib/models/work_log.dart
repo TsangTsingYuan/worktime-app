@@ -8,6 +8,10 @@ class WorkLog {
   final int duration;
   final int status; // 0: ongoing, 1: completed
   final String notes;
+  final String? serverId;
+  final int createdAt;
+  final int updatedAt;
+  final bool isSynced;
 
   WorkLog({
     this.id,
@@ -19,6 +23,10 @@ class WorkLog {
     this.duration = 0,
     this.status = 0,
     this.notes = '',
+    this.serverId,
+    this.createdAt = 0,
+    this.updatedAt = 0,
+    this.isSynced = false,
   });
 
   Map<String, dynamic> toMap() => {
@@ -31,6 +39,10 @@ class WorkLog {
         'duration': duration,
         'status': status,
         'notes': notes,
+        'serverId': serverId,
+        'createdAt': createdAt,
+        'updatedAt': updatedAt,
+        'isSynced': isSynced ? 1 : 0,
       };
 
   factory WorkLog.fromMap(Map<String, dynamic> map) => WorkLog(
@@ -43,6 +55,10 @@ class WorkLog {
         duration: map['duration'] ?? 0,
         status: map['status'] ?? 0,
         notes: map['notes'] ?? '',
+        serverId: map['serverId'],
+        createdAt: map['createdAt'] ?? 0,
+        updatedAt: map['updatedAt'] ?? 0,
+        isSynced: (map['isSynced'] ?? 0) == 1,
       );
 
   WorkLog copyWith({
@@ -55,6 +71,10 @@ class WorkLog {
     int? duration,
     int? status,
     String? notes,
+    String? serverId,
+    int? createdAt,
+    int? updatedAt,
+    bool? isSynced,
   }) =>
       WorkLog(
         id: id ?? this.id,
@@ -66,5 +86,9 @@ class WorkLog {
         duration: duration ?? this.duration,
         status: status ?? this.status,
         notes: notes ?? this.notes,
+        serverId: serverId ?? this.serverId,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+        isSynced: isSynced ?? this.isSynced,
       );
 }

@@ -4,6 +4,8 @@ class User {
   final String phone;
   final String password;
   final String config;
+  final String? serverId;
+  final String token;
 
   User({
     this.id,
@@ -11,6 +13,8 @@ class User {
     this.phone = '',
     this.password = '',
     this.config = '',
+    this.serverId,
+    this.token = '',
   });
 
   Map<String, dynamic> toMap() => {
@@ -19,6 +23,8 @@ class User {
         'phone': phone,
         'password': password,
         'config': config,
+        'serverId': serverId,
+        'token': token,
       };
 
   factory User.fromMap(Map<String, dynamic> map) => User(
@@ -27,6 +33,8 @@ class User {
         phone: map['phone'] ?? '',
         password: map['password'] ?? '',
         config: map['config'] ?? '',
+        serverId: map['serverId'],
+        token: map['token'] ?? '',
       );
 
   User copyWith({
@@ -35,6 +43,8 @@ class User {
     String? phone,
     String? password,
     String? config,
+    String? serverId,
+    String? token,
   }) =>
       User(
         id: id ?? this.id,
@@ -42,5 +52,7 @@ class User {
         phone: phone ?? this.phone,
         password: password ?? this.password,
         config: config ?? this.config,
+        serverId: serverId ?? this.serverId,
+        token: token ?? this.token,
       );
 }

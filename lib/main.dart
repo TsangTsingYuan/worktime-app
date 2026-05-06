@@ -8,10 +8,22 @@ import 'providers/work_log_provider.dart';
 import 'providers/settings_provider.dart';
 import 'services/reminder_service.dart'
     if (dart.library.html) 'services/reminder_service_web.dart';
+import 'services/api_client.dart';
+import 'services/sync_service.dart';
+import 'services/database_helper.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/stats_screen.dart';
 import 'screens/settings_screen.dart';
+
+/// Backend API URL.
+/// Override at build time: flutter build web --dart-define=API_URL=https://your-server.com
+const String _kApiBaseUrl = String.fromEnvironment('API_URL', defaultValue: 'http://localhost:8080');
+
+/// Shared instances (live as long as the app lives)
+final _db = DatabaseHelper();
+final _apiClient = ApiClient(_kApiBaseUrl);
+final _syncService = SyncService(_apiClient, _db);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,11 +38,12 @@ class WorktimeApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => AuthProvider(_apiClient, _syncService)),
         ChangeNotifierProvider(create: (_) => TimerProvider()),
         ChangeNotifierProvider(create: (_) => WorkLogProvider()),
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
         ChangeNotifierProvider(create: (_) => ReminderService()),
+        ChangeNotifierProvider.value(value: _syncService),
       ],
       child: MaterialApp(
         title: '工作打卡',
@@ -59,6 +72,7 @@ class _AppShellState extends State<AppShell> {
   late final SettingsProvider _settings;
   late final WorkLogProvider _workLog;
   late final ReminderService _reminderService;
+  late final SyncService _syncService;
 
   @override
   void initState() {
@@ -67,6 +81,7 @@ class _AppShellState extends State<AppShell> {
     _settings = context.read<SettingsProvider>();
     _workLog = context.read<WorkLogProvider>();
     _reminderService = context.read<ReminderService>();
+    _syncService = context.read<SyncService>();
 
     _reminderService.initializeVisibilityListener();
 
@@ -76,6 +91,7 @@ class _AppShellState extends State<AppShell> {
 
     if (_auth.isLoggedIn) {
       _reminderService.start(_settings, _workLog);
+      _triggerSync();
     }
 
     _auth.addListener(_onAuthChanged);
@@ -95,8 +111,16 @@ class _AppShellState extends State<AppShell> {
     if (_auth.isLoggedIn && _auth.user != null) {
       _settings.loadFromJson(_auth.user!.config);
       _reminderService.start(_settings, _workLog);
+      _triggerSync();
     } else {
       _reminderService.stop();
+    }
+  }
+
+  void _triggerSync() {
+    final user = _auth.user;
+    if (user != null && user.id != null && _syncService.hasServer) {
+      _syncService.sync(user.id!);
     }
   }
 

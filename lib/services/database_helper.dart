@@ -10,7 +10,7 @@ class DatabaseHelper {
 
   static Database? _database;
   static const _dbName = 'worktime.db';
-  static const _dbVersion = 1;
+  static const _dbVersion = 2;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -24,6 +24,7 @@ class DatabaseHelper {
       join(dbPath, _dbName),
       version: _dbVersion,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -34,7 +35,9 @@ class DatabaseHelper {
         nickname TEXT NOT NULL DEFAULT '',
         phone TEXT NOT NULL UNIQUE,
         password TEXT NOT NULL,
-        config TEXT NOT NULL DEFAULT ''
+        config TEXT NOT NULL DEFAULT '',
+        serverId TEXT,
+        token TEXT NOT NULL DEFAULT ''
       )
     ''');
     await db.execute('''
@@ -48,9 +51,25 @@ class DatabaseHelper {
         duration INTEGER NOT NULL DEFAULT 0,
         status INTEGER NOT NULL DEFAULT 0,
         notes TEXT NOT NULL DEFAULT '',
+        serverId TEXT,
+        createdAt INTEGER NOT NULL DEFAULT 0,
+        updatedAt INTEGER NOT NULL DEFAULT 0,
+        isSynced INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (userId) REFERENCES user(id)
       )
     ''');
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Migration v1 → v2: add sync fields
+      await db.execute("ALTER TABLE user ADD COLUMN serverId TEXT");
+      await db.execute("ALTER TABLE user ADD COLUMN token TEXT NOT NULL DEFAULT ''");
+      await db.execute("ALTER TABLE work_log ADD COLUMN serverId TEXT");
+      await db.execute("ALTER TABLE work_log ADD COLUMN createdAt INTEGER NOT NULL DEFAULT 0");
+      await db.execute("ALTER TABLE work_log ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0");
+      await db.execute("ALTER TABLE work_log ADD COLUMN isSynced INTEGER NOT NULL DEFAULT 0");
+    }
   }
 
   // ---- User CRUD ----
@@ -101,12 +120,31 @@ class DatabaseHelper {
 
   Future<int> insertWorkLog(WorkLog log) async {
     final db = await database;
-    return db.insert('work_log', log.toMap());
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final data = log.copyWith(createdAt: now, updatedAt: now).toMap();
+    return db.insert('work_log', data);
   }
 
   Future<void> updateWorkLog(WorkLog log) async {
     final db = await database;
-    await db.update('work_log', log.toMap(), where: 'id = ?', whereArgs: [log.id]);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final data = log.copyWith(updatedAt: now).toMap();
+    await db.update('work_log', data, where: 'id = ?', whereArgs: [log.id]);
+  }
+
+  /// Upsert by local ID (used when pulling remote changes)
+  Future<void> upsertWorkLog(WorkLog log) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final data = log.copyWith(updatedAt: now).toMap();
+    final existing = await db.query('work_log', where: 'id = ?', whereArgs: [log.id]);
+    if (existing.isNotEmpty) {
+      await db.update('work_log', data, where: 'id = ?', whereArgs: [log.id]);
+    } else {
+      // Use provided id as-is for upsert
+      await db.insert('work_log', data,
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    }
   }
 
   Future<void> deleteWorkLog(int id) async {
@@ -137,6 +175,29 @@ class DatabaseHelper {
       orderBy: 'startTime DESC',
     );
     return maps.map((m) => WorkLog.fromMap(m)).toList();
+  }
+
+  /// Get all unsynced work logs for a user
+  Future<List<WorkLog>> getUnsyncedLogs(int userId) async {
+    final db = await database;
+    final maps = await db.query(
+      'work_log',
+      where: 'userId = ? AND isSynced = 0',
+      whereArgs: [userId],
+    );
+    return maps.map((m) => WorkLog.fromMap(m)).toList();
+  }
+
+  /// Mark a single work log as synced
+  Future<void> markLogSynced(int logId) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update(
+      'work_log',
+      {'isSynced': 1, 'updatedAt': now},
+      where: 'id = ?',
+      whereArgs: [logId],
+    );
   }
 
   Future<void> clearAllData(int userId) async {
