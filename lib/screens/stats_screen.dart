@@ -77,6 +77,8 @@ class _StatsScreenState extends State<StatsScreen> {
     return '${s}s';
   }
 
+  bool _isWide(BuildContext context) => MediaQuery.of(context).size.width > 600;
+
   @override
   Widget build(BuildContext context) {
     final wp = context.watch<WorkLogProvider>();
@@ -89,6 +91,7 @@ class _StatsScreenState extends State<StatsScreen> {
     final completed = logs.where((l) => l.status == 1).toList();
     final totalSecs = completed.fold<int>(0, (sum, l) => sum + l.duration);
     final cats = _aggregateByCategory(completed);
+    final isWide = _isWide(context);
 
     return Scaffold(
       appBar: AppBar(title: const Text('统计报表')),
@@ -114,90 +117,147 @@ class _StatsScreenState extends State<StatsScreen> {
                   },
                 ),
                 const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _OverviewCard(
-                        title: '工作时长',
-                        value: _formatDuration(totalSecs),
-                        icon: Icons.timer,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _OverviewCard(
-                        title: '完成任务',
-                        value: '${completed.length} 个',
-                        icon: Icons.task_alt,
-                      ),
-                    ),
-                  ],
-                ),
+                // Overview cards
+                _buildOverviewCards(totalSecs, completed.length),
                 const SizedBox(height: 24),
-                Row(children: const [
-                  Icon(Icons.pie_chart_outline, size: 20),
-                  SizedBox(width: 6),
-                  Text('分类统计',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                ]),
-                const SizedBox(height: 12),
-                if (cats.isEmpty)
-                  const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.pie_chart_outline, size: 48, color: Colors.grey),
-                        SizedBox(height: 8),
-                        Text('暂无数据'),
-                      ],
-                    ),
+                if (isWide)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: _buildPieChartSection(cats, totalSecs),
+                      ),
+                      const SizedBox(width: 24),
+                      Expanded(
+                        flex: 3,
+                        child: _buildDailyDetailSection(completed),
+                      ),
+                    ],
                   )
-                else
-                  _buildPieChart(cats, totalSecs),
-                const SizedBox(height: 24),
-                Row(children: const [
-                  Icon(Icons.list_alt, size: 20),
-                  SizedBox(width: 6),
-                  Text('每日明细',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                ]),
-                const SizedBox(height: 12),
-                ...completed.reversed.map((log) {
-                  final date = DateTime.fromMillisecondsSinceEpoch(log.startTime);
-                  final dateStr = DateFormat('MM/dd HH:mm').format(date);
-                  return ListTile(
-                    leading: const Icon(Icons.check_circle, color: Colors.green),
-                    title: Text(log.title),
-                    subtitle: Text('$dateStr  ${log.category}'),
-                    trailing: Text(_formatDuration(log.duration)),
-                  );
-                }),
+                else ...[
+                  _buildPieChartSection(cats, totalSecs),
+                  const SizedBox(height: 24),
+                  _buildDailyDetailSection(completed),
+                ],
                 const SizedBox(height: 32),
-                Row(children: const [
-                  Icon(Icons.checklist, size: 20),
-                  SizedBox(width: 6),
-                  Text('待办统计',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                ]),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _OverviewCard(
-                        title: '完成待办',
-                        value: '$_todoCompleted 个',
-                        icon: Icons.task_alt,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(child: Container()), // placeholder for future stats
-                  ],
-                ),
+                _buildTodoStatsSection(),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildOverviewCards(int totalSecs, int completedCount) {
+    final isWide = _isWide(context);
+    final cards = [
+      _OverviewCard(
+        title: '工作时长',
+        value: _formatDuration(totalSecs),
+        icon: Icons.timer,
+      ),
+      _OverviewCard(
+        title: '完成任务',
+        value: '$completedCount 个',
+        icon: Icons.task_alt,
+      ),
+      _OverviewCard(
+        title: '完成待办',
+        value: '$_todoCompleted 个',
+        icon: Icons.checklist,
+      ),
+    ];
+
+    if (isWide) {
+      return Row(
+        children: cards.map((c) => Expanded(child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: c,
+        ))).toList(),
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(child: cards[0]),
+        const SizedBox(width: 16),
+        Expanded(child: cards[1]),
+      ],
+    );
+  }
+
+  Widget _buildPieChartSection(List<MapEntry<String, int>> cats, int totalSecs) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: const [
+          Icon(Icons.pie_chart_outline, size: 20),
+          SizedBox(width: 6),
+          Text('分类统计',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ]),
+        const SizedBox(height: 12),
+        if (cats.isEmpty)
+          const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.pie_chart_outline, size: 48, color: Colors.grey),
+                SizedBox(height: 8),
+                Text('暂无数据'),
+              ],
+            ),
+          )
+        else
+          _buildPieChart(cats, totalSecs),
+      ],
+    );
+  }
+
+  Widget _buildDailyDetailSection(List<WorkLog> completed) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: const [
+          Icon(Icons.list_alt, size: 20),
+          SizedBox(width: 6),
+          Text('每日明细',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ]),
+        const SizedBox(height: 12),
+        ...completed.reversed.map((log) {
+          final date = DateTime.fromMillisecondsSinceEpoch(log.startTime);
+          final dateStr = DateFormat('MM/dd HH:mm').format(date);
+          return ListTile(
+            leading: const Icon(Icons.check_circle, color: Colors.green),
+            title: Text(log.title),
+            subtitle: Text('$dateStr  ${log.category}'),
+            trailing: Text(_formatDuration(log.duration)),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildTodoStatsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: const [
+          Icon(Icons.checklist, size: 20),
+          SizedBox(width: 6),
+          Text('待办统计',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ]),
+        const SizedBox(height: 12),
+        _OverviewCard(
+          title: '完成待办',
+          value: '$_todoCompleted 个',
+          icon: Icons.task_alt,
+        ),
+      ],
     );
   }
 

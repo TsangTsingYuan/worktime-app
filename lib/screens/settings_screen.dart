@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../models/user.dart';
 import '../providers/auth_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/work_log_provider.dart';
@@ -14,111 +15,181 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().user;
     final settings = context.watch<SettingsProvider>().settings;
+    final isWide = MediaQuery.of(context).size.width > 600;
 
     return Scaffold(
       appBar: AppBar(title: const Text('个人设置')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 900),
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              // Profile section
-              _SectionHeader(title: '个人档案', icon: Icons.person),
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Colors.blue,
-                  child: Text(
-                    (user?.nickname ?? 'U').substring(0, 1).toUpperCase(),
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-                title: Text(user?.nickname ?? ''),
-                subtitle: Text(user?.phone ?? ''),
-                trailing: const Icon(Icons.edit),
-                onTap: () => _editNickname(context),
-              ),
-
-              const Divider(),
-              _SectionHeader(title: '工作时间配置', icon: Icons.work_history),
-              ListTile(
-                leading: const Icon(Icons.schedule),
-                title: const Text('上班时间'),
-                subtitle: Text(settings.workStart),
-                onTap: () => _pickTime(context, true),
-              ),
-              ListTile(
-                leading: const Icon(Icons.schedule),
-                title: const Text('下班时间'),
-                subtitle: Text(settings.workEnd),
-                onTap: () => _pickTime(context, false),
-              ),
-              ListTile(
-                leading: const Icon(Icons.free_breakfast),
-                title: const Text('午休时长'),
-                subtitle: Text('${settings.breakDuration} 分钟'),
-                onTap: () => _editBreakDuration(context),
-              ),
-
-              const Divider(),
-              _SectionHeader(title: '提醒配置', icon: Icons.notifications_outlined),
-              SwitchListTile(
-                secondary: const Icon(Icons.accessibility_new),
-                title: const Text('久坐提醒'),
-                subtitle: Text(settings.sedentaryReminder > 0
-                    ? '每 ${settings.sedentaryReminder} 分钟提醒一次'
-                    : '已关闭，点击设置提醒间隔'),
-                value: settings.sedentaryReminder > 0,
-                onChanged: (v) {
-                  if (v) {
-                    _editSedentaryReminder(context);
-                  } else {
-                    final s = context.read<SettingsProvider>().settings;
-                    final u = context.read<AuthProvider>().user;
-                    context.read<SettingsProvider>().updateSettings(
-                      WorkSettings(
-                        workStart: s.workStart,
-                        workEnd: s.workEnd,
-                        breakDuration: s.breakDuration,
-                        sedentaryReminder: 0,
-                        offWorkReminder: s.offWorkReminder,
-                      ),
-                      u!.id!,
-                    );
-                  }
-                },
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.notification_important),
-                title: const Text('下班未打卡提醒'),
-                subtitle: const Text('下班后检测是否已打卡'),
-                value: settings.offWorkReminder,
-                onChanged: (v) => _toggleSetting(context, offWorkReminder: v),
-              ),
-
-              const Divider(),
-              _SectionHeader(title: '数据管理', icon: Icons.storage),
-              ListTile(
-                leading: const Icon(Icons.file_download),
-                title: const Text('导出今日数据'),
-                subtitle: const Text('导出为 CSV 文件'),
-                onTap: () => _exportData(context),
-              ),
-              ListTile(
-                leading: const Icon(Icons.file_download),
-                title: const Text('导出本周数据'),
-                subtitle: const Text('导出为 CSV 文件'),
-                onTap: () => _exportData(context, range: 'week'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('清空今日数据', style: TextStyle(color: Colors.red)),
-                onTap: () => _clearData(context),
-              ),
-            ],
-          ),
+          child: isWide ? _buildWideLayout(context, user, settings) : _buildNarrowLayout(context, user, settings),
         ),
       ),
+    );
+  }
+
+  Widget _buildNarrowLayout(BuildContext context, User? user, WorkSettings settings) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _buildProfileSection(context, user),
+        const Divider(),
+        _buildWorkScheduleSection(context, settings),
+        const Divider(),
+        _buildReminderSection(context, settings),
+        const Divider(),
+        _buildDataSection(context),
+      ],
+    );
+  }
+
+  Widget _buildWideLayout(BuildContext context, User? user, WorkSettings settings) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 16,
+        children: [
+          SizedBox(
+            width: _sectionWidth(context),
+            child: Card(child: _buildProfileSection(context, user)),
+          ),
+          SizedBox(
+            width: _sectionWidth(context),
+            child: Card(child: _buildWorkScheduleSection(context, settings)),
+          ),
+          SizedBox(
+            width: _sectionWidth(context),
+            child: Card(child: _buildReminderSection(context, settings)),
+          ),
+          SizedBox(
+            width: _sectionWidth(context),
+            child: Card(child: _buildDataSection(context)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  double _sectionWidth(BuildContext context) {
+    final maxWidth = MediaQuery.of(context).size.width > 900 ? 900.0 : MediaQuery.of(context).size.width;
+    return (maxWidth - 48) / 2;
+  }
+
+  Widget _buildProfileSection(BuildContext context, User? user) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(title: '个人档案', icon: Icons.person),
+        ListTile(
+          leading: CircleAvatar(
+            backgroundColor: Colors.blue,
+            child: Text(
+              (user?.nickname ?? 'U').substring(0, 1).toUpperCase(),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+          title: Text(user?.nickname ?? ''),
+          subtitle: Text(user?.phone ?? ''),
+          trailing: const Icon(Icons.edit),
+          onTap: () => _editNickname(context),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWorkScheduleSection(BuildContext context, WorkSettings settings) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(title: '工作时间配置', icon: Icons.work_history),
+        ListTile(
+          leading: const Icon(Icons.schedule),
+          title: const Text('上班时间'),
+          subtitle: Text(settings.workStart),
+          onTap: () => _pickTime(context, true),
+        ),
+        ListTile(
+          leading: const Icon(Icons.schedule),
+          title: const Text('下班时间'),
+          subtitle: Text(settings.workEnd),
+          onTap: () => _pickTime(context, false),
+        ),
+        ListTile(
+          leading: const Icon(Icons.free_breakfast),
+          title: const Text('午休时长'),
+          subtitle: Text('${settings.breakDuration} 分钟'),
+          onTap: () => _editBreakDuration(context),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReminderSection(BuildContext context, WorkSettings settings) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(title: '提醒配置', icon: Icons.notifications_outlined),
+        SwitchListTile(
+          secondary: const Icon(Icons.accessibility_new),
+          title: const Text('久坐提醒'),
+          subtitle: Text(settings.sedentaryReminder > 0
+              ? '每 ${settings.sedentaryReminder} 分钟提醒一次'
+              : '已关闭，点击设置提醒间隔'),
+          value: settings.sedentaryReminder > 0,
+          onChanged: (v) {
+            if (v) {
+              _editSedentaryReminder(context);
+            } else {
+              final s = context.read<SettingsProvider>().settings;
+              final u = context.read<AuthProvider>().user;
+              context.read<SettingsProvider>().updateSettings(
+                WorkSettings(
+                  workStart: s.workStart,
+                  workEnd: s.workEnd,
+                  breakDuration: s.breakDuration,
+                  sedentaryReminder: 0,
+                  offWorkReminder: s.offWorkReminder,
+                ),
+                u!.id!,
+              );
+            }
+          },
+        ),
+        SwitchListTile(
+          secondary: const Icon(Icons.notification_important),
+          title: const Text('下班未打卡提醒'),
+          subtitle: const Text('下班后检测是否已打卡'),
+          value: settings.offWorkReminder,
+          onChanged: (v) => _toggleSetting(context, offWorkReminder: v),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDataSection(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(title: '数据管理', icon: Icons.storage),
+        ListTile(
+          leading: const Icon(Icons.file_download),
+          title: const Text('导出今日数据'),
+          subtitle: const Text('导出为 CSV 文件'),
+          onTap: () => _exportData(context),
+        ),
+        ListTile(
+          leading: const Icon(Icons.file_download),
+          title: const Text('导出本周数据'),
+          subtitle: const Text('导出为 CSV 文件'),
+          onTap: () => _exportData(context, range: 'week'),
+        ),
+        ListTile(
+          leading: const Icon(Icons.delete_outline, color: Colors.red),
+          title: const Text('清空今日数据', style: TextStyle(color: Colors.red)),
+          onTap: () => _clearData(context),
+        ),
+      ],
     );
   }
 

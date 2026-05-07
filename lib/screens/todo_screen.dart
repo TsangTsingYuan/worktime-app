@@ -155,11 +155,14 @@ class _TodoScreenState extends State<TodoScreen> {
     _loadDayTodos();
   }
 
+  bool _isWide(BuildContext context) => MediaQuery.of(context).size.width > 600;
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<TodoProvider>();
     final todos = provider.todos.where((t) => t.parentId == null).toList();
     final isLoading = provider.loading;
+    final isWide = _isWide(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -175,39 +178,81 @@ class _TodoScreenState extends State<TodoScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Calendar
-          _buildCalendar(),
-          // Search + filters
-          _buildFilters(),
-          // Divider
-          Divider(height: 1, color: Colors.grey.shade300),
-          // Todo list
-          Expanded(
-            child: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : todos.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        padding: const EdgeInsets.only(top: 4, bottom: 80),
-                        itemCount: todos.length,
-                        itemBuilder: (_, i) => TodoCard(
-                          todo: todos[i],
-                          onToggle: () => _toggleComplete(todos[i]),
-                          onEdit: () => _editTodo(todos[i]),
-                          onDelete: () => _deleteTodo(todos[i]),
-                          onStartTimer: todos[i].status != 2
-                              ? () => _startTimerFromTodo(todos[i])
-                              : null,
-                        ),
-                      ),
-          ),
-        ],
+      body: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1100),
+        child: isWide
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 360,
+                    child: _buildCalendar(),
+                  ),
+                  const VerticalDivider(width: 1),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        _buildFilters(),
+                        const Divider(height: 1),
+                        Expanded(child: _buildTodoList(isLoading, todos)),
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            : Column(
+                children: [
+                  _buildCalendar(),
+                  _buildFilters(),
+                  Divider(height: 1, color: Colors.grey.shade300),
+                  Expanded(child: _buildTodoList(isLoading, todos)),
+                ],
+              ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addTodo,
         child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  Widget _buildTodoList(bool isLoading, List<TodoItem> todos) {
+    if (isLoading) return const Center(child: CircularProgressIndicator());
+    if (todos.isEmpty) return _buildEmptyState();
+
+    if (_isWide(context)) {
+      return GridView.builder(
+        padding: const EdgeInsets.all(8),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          childAspectRatio: 2.8,
+          mainAxisSpacing: 6,
+          crossAxisSpacing: 6,
+        ),
+        itemCount: todos.length,
+        itemBuilder: (_, i) => TodoCard(
+          todo: todos[i],
+          onToggle: () => _toggleComplete(todos[i]),
+          onEdit: () => _editTodo(todos[i]),
+          onDelete: () => _deleteTodo(todos[i]),
+          onStartTimer: todos[i].status != 2
+              ? () => _startTimerFromTodo(todos[i])
+              : null,
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 4, bottom: 80),
+      itemCount: todos.length,
+      itemBuilder: (_, i) => TodoCard(
+        todo: todos[i],
+        onToggle: () => _toggleComplete(todos[i]),
+        onEdit: () => _editTodo(todos[i]),
+        onDelete: () => _deleteTodo(todos[i]),
+        onStartTimer: todos[i].status != 2
+            ? () => _startTimerFromTodo(todos[i])
+            : null,
       ),
     );
   }
