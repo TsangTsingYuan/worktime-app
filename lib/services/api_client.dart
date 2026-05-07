@@ -42,6 +42,11 @@ class ApiClient {
     return _get('/api/worklogs?since=$sinceMs');
   }
 
+  /// Get todos since a given timestamp
+  Future<ApiResult> getTodos({int sinceMs = 0}) async {
+    return _get('/api/todos?since=$sinceMs');
+  }
+
   /// Create a work log on the server
   Future<ApiResult> createWorkLog(Map<String, dynamic> log) async {
     return _post('/api/worklogs', log);
@@ -58,9 +63,11 @@ class ApiClient {
   }
 
   /// Batch sync: push local changes + pull remote changes
-  Future<ApiResult> sync(List<Map<String, dynamic>> changes, int lastSyncAt) async {
+  Future<ApiResult> sync(List<Map<String, dynamic>> changes, int lastSyncAt,
+      {List<Map<String, dynamic>> todoChanges = const []}) async {
     return _post('/api/sync', {
       'changes': changes,
+      'todoChanges': todoChanges,
       'lastSyncAt': lastSyncAt,
     });
   }

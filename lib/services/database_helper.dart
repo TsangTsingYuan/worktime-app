@@ -315,6 +315,21 @@ class DatabaseHelper {
     return maps.map((m) => TodoItem.fromMap(m)).toList();
   }
 
+  Future<List<TodoItem>> getUnsyncedTodos(int userId) async {
+    final db = await database;
+    final maps = await db.query('todo',
+        where: 'userId = ? AND isSynced = 0 AND parentId IS NULL',
+        whereArgs: [userId]);
+    return maps.map((m) => TodoItem.fromMap(m)).toList();
+  }
+
+  Future<void> markTodoSynced(int todoId) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update('todo', {'isSynced': 1, 'updatedAt': now},
+        where: 'id = ?', whereArgs: [todoId]);
+  }
+
   Future<void> clearAllData(int userId) async {
     final db = await database;
     await db.delete('work_log', where: 'userId = ?', whereArgs: [userId]);

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../models/work_log.dart';
+import '../models/todo_item.dart';
 import '../services/api_client.dart';
 import '../services/database_helper.dart';
 
@@ -11,7 +12,7 @@ class SyncService extends ChangeNotifier {
   final DatabaseHelper _db;
   bool _isSyncing = false;
   int _lastSyncAt = 0;
-  bool _hasServer = false; // true if we've ever connected to the server
+  bool _hasServer = false;
 
   SyncService(this._api, this._db);
 
@@ -33,7 +34,6 @@ class SyncService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // 1. Push local unsynced changes
       final pushResult = await _pushChanges(userId);
       if (!pushResult.ok) {
         _isSyncing = false;
@@ -41,7 +41,6 @@ class SyncService extends ChangeNotifier {
         return pushResult;
       }
 
-      // 2. Pull remote changes
       final pullResult = await _pullChanges(userId);
       _isSyncing = false;
       notifyListeners();
@@ -56,13 +55,9 @@ class SyncService extends ChangeNotifier {
   /// Push local changes to the server
   Future<SyncResult> _pushChanges(int userId) async {
     try {
-      // Get all unsynced logs for the user
+      // Push unsynced work logs
       final unsyncedLogs = await _db.getUnsyncedLogs(userId);
-      if (unsyncedLogs.isEmpty) {
-        return SyncResult(ok: true, message: 'Nothing to push');
-      }
-
-      final changes = unsyncedLogs.map((log) => {
+      final logChanges = unsyncedLogs.map((log) => {
         'clientId': log.id.toString(),
         'title': log.title,
         'category': log.category,
@@ -71,10 +66,31 @@ class SyncService extends ChangeNotifier {
         'duration': log.duration,
         'status': log.status,
         'notes': log.notes,
-        'startTimeMs': log.startTime,
       }).toList();
 
-      final result = await _api.sync(changes, _lastSyncAt);
+      // Push unsynced todos
+      final unsyncedTodos = await _db.getUnsyncedTodos(userId);
+      final todoChanges = unsyncedTodos.map((t) => {
+        'clientId': t.id.toString(),
+        'title': t.title,
+        'description': t.description,
+        'priority': t.priority,
+        'status': t.status,
+        'dueDate': t.dueDate,
+        'category': t.category,
+        'linkedWorkLogClientId': t.linkedWorkLogId?.toString(),
+        'parentClientId': t.parentId?.toString(),
+        'recurringRule': t.recurringRule,
+        'sortOrder': t.sortOrder,
+        'createdAt': t.createdAt,
+        'updatedAt': t.updatedAt,
+      }).toList();
+
+      if (logChanges.isEmpty && todoChanges.isEmpty) {
+        return SyncResult(ok: true, message: 'Nothing to push');
+      }
+
+      final result = await _api.sync(logChanges, _lastSyncAt, todoChanges: todoChanges);
       if (!result.ok) {
         return SyncResult(ok: false, message: result.error ?? 'Push failed');
       }
@@ -86,11 +102,17 @@ class SyncService extends ChangeNotifier {
         }
       }
 
-      // Update sync timestamp
+      // Mark pushed todos as synced
+      for (final todo in unsyncedTodos) {
+        if (todo.id != null) {
+          await _db.markTodoSynced(todo.id!);
+        }
+      }
+
       final syncAt = result.get<int>('syncAt') ?? DateTime.now().millisecondsSinceEpoch;
       _lastSyncAt = syncAt;
 
-      return SyncResult(ok: true, message: 'Pushed ${unsyncedLogs.length} changes');
+      return SyncResult(ok: true, message: 'Pushed ${logChanges.length} logs + ${todoChanges.length} todos');
     } catch (e) {
       return SyncResult(ok: false, message: 'Push error: $e');
     }
@@ -99,26 +121,21 @@ class SyncService extends ChangeNotifier {
   /// Pull remote changes from the server
   Future<SyncResult> _pullChanges(int userId) async {
     try {
-      final result = await _api.getWorkLogs(sinceMs: _lastSyncAt);
-      if (!result.ok) {
-        return SyncResult(ok: false, message: result.error ?? 'Pull failed');
+      // Pull work logs
+      final logResult = await _api.getWorkLogs(sinceMs: _lastSyncAt);
+      if (!logResult.ok) {
+        return SyncResult(ok: false, message: logResult.error ?? 'Pull failed');
       }
 
-      final logs = result.get<List<dynamic>>('logs') ?? [];
-      if (logs.isEmpty) {
-        return SyncResult(ok: true, message: 'No new data');
-      }
-
-      int applied = 0;
+      final logs = logResult.get<List<dynamic>>('logs') ?? [];
+      int logApplied = 0;
       for (final logData in logs) {
         final log = logData as Map<String, dynamic>;
         final clientId = log['clientId']?.toString();
         if (clientId == null) continue;
-
         final localId = int.tryParse(clientId);
         if (localId == null) continue;
 
-        // Convert server data to local WorkLog and upsert
         final workLog = WorkLog(
           id: localId,
           userId: userId,
@@ -130,15 +147,53 @@ class SyncService extends ChangeNotifier {
           status: log['status'] as int? ?? 0,
           notes: log['notes']?.toString() ?? '',
         );
-
         await _db.upsertWorkLog(workLog);
-        applied++;
+        logApplied++;
+      }
+
+      // Pull todos
+      int todoApplied = 0;
+      final todoResult = await _api.getTodos(sinceMs: _lastSyncAt);
+      if (todoResult.ok) {
+        final todos = todoResult.get<List<dynamic>>('todos') ?? [];
+        for (final todoData in todos) {
+          final t = todoData as Map<String, dynamic>;
+          final clientId = t['clientId']?.toString();
+          if (clientId == null) continue;
+          final localId = int.tryParse(clientId);
+          if (localId == null) continue;
+
+          final todo = TodoItem(
+            id: localId,
+            userId: userId,
+            title: t['title']?.toString() ?? '',
+            description: t['description']?.toString() ?? '',
+            priority: t['priority'] as int? ?? 1,
+            status: t['status'] as int? ?? 0,
+            dueDate: t['dueDate'] as int?,
+            category: t['category']?.toString() ?? '',
+            linkedWorkLogId: t['linkedWorkLogClientId'] != null
+                ? int.tryParse(t['linkedWorkLogClientId'].toString())
+                : null,
+            parentId: t['parentClientId'] != null
+                ? int.tryParse(t['parentClientId'].toString())
+                : null,
+            recurringRule: t['recurringRule']?.toString() ?? '',
+            sortOrder: t['sortOrder'] as int? ?? 0,
+            createdAt: t['createdAt'] as int? ?? 0,
+            updatedAt: t['updatedAt'] as int? ?? 0,
+            isSynced: true,
+          );
+          await _db.updateTodo(todo);
+          todoApplied++;
+        }
       }
 
       final syncAt = DateTime.now().millisecondsSinceEpoch;
       _lastSyncAt = syncAt;
 
-      return SyncResult(ok: true, message: 'Pulled $applied changes');
+      return SyncResult(ok: true,
+          message: 'Pulled $logApplied logs + $todoApplied todos');
     } catch (e) {
       return SyncResult(ok: false, message: 'Pull error: $e');
     }
