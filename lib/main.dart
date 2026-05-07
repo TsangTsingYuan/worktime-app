@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:sqflite/sqflite.dart';
+import 'models/todo_item.dart';
 import 'providers/auth_provider.dart';
 import 'providers/timer_provider.dart';
 import 'providers/work_log_provider.dart';
 import 'providers/settings_provider.dart';
+import 'providers/todo_provider.dart';
 import 'services/reminder_service.dart'
     if (dart.library.html) 'services/reminder_service_web.dart';
 import 'services/api_client.dart';
@@ -14,6 +16,7 @@ import 'services/database_helper.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/stats_screen.dart';
+import 'screens/todo_screen.dart';
 import 'screens/settings_screen.dart';
 
 /// Backend API URL.
@@ -42,6 +45,7 @@ class WorktimeApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => TimerProvider()),
         ChangeNotifierProvider(create: (_) => WorkLogProvider()),
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProvider(create: (_) => TodoProvider()),
         ChangeNotifierProvider(create: (_) => ReminderService()),
         ChangeNotifierProvider.value(value: _syncService),
       ],
@@ -148,6 +152,31 @@ class _AppShellState extends State<AppShell> {
     setState(() => _currentIndex = index);
   }
 
+  void _startTimerFromTodo(TodoItem todo) {
+    final user = _auth.user;
+    if (user == null || user.id == null) return;
+    final userId = user.id!;
+    final workLogProvider = context.read<WorkLogProvider>();
+    final timerProvider = context.read<TimerProvider>();
+    final todoProvider = context.read<TodoProvider>();
+    // Switch to home tab
+    setState(() => _currentIndex = 0);
+    // Start a new work log and timer from this todo
+    workLogProvider.loadTodayLogs(userId).then((_) {
+      return workLogProvider.startNewTask(
+        userId,
+        todo.title,
+        todo.category.isNotEmpty ? todo.category : '其他',
+        notes: todo.description,
+      );
+    }).then((workLogId) {
+      timerProvider.start(workLogId, todo.title, todo.category.isNotEmpty ? todo.category : '其他');
+      if (todo.id != null) {
+        todoProvider.updateTodo(todo.copyWith(linkedWorkLogId: workLogId));
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLoggedIn = context.watch<AuthProvider>().isLoggedIn;
@@ -173,6 +202,11 @@ class _AppShellState extends State<AppShell> {
                   icon: Icon(Icons.bar_chart_outlined),
                   selectedIcon: Icon(Icons.bar_chart),
                   label: Text('统计'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.checklist_outlined),
+                  selectedIcon: Icon(Icons.checklist),
+                  label: Text('待办'),
                 ),
                 NavigationRailDestination(
                   icon: Icon(Icons.settings_outlined),
@@ -205,6 +239,11 @@ class _AppShellState extends State<AppShell> {
             label: '统计',
           ),
           NavigationDestination(
+            icon: Icon(Icons.checklist_outlined),
+            selectedIcon: Icon(Icons.checklist),
+            label: '待办',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings),
             label: '设置',
@@ -221,6 +260,10 @@ class _AppShellState extends State<AppShell> {
       case 1:
         return const StatsScreen();
       case 2:
+        return TodoScreen(
+          onStartTimerFromTodo: _startTimerFromTodo,
+        );
+      case 3:
         return const SettingsScreen();
       default:
         return const HomeScreen();

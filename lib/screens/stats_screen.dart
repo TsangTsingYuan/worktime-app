@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../models/work_log.dart';
 import '../providers/work_log_provider.dart';
+import '../providers/todo_provider.dart';
 import '../providers/auth_provider.dart';
 
 class StatsScreen extends StatefulWidget {
@@ -14,6 +15,7 @@ class StatsScreen extends StatefulWidget {
 
 class _StatsScreenState extends State<StatsScreen> {
   String _range = 'today';
+  int _todoCompleted = 0;
 
   @override
   void initState() {
@@ -28,6 +30,30 @@ class _StatsScreenState extends State<StatsScreen> {
     wp.loadTodayLogs(user.id!);
     wp.loadWeekLogs(user.id!);
     wp.loadMonthLogs(user.id!);
+    _loadTodoStats(user.id!);
+  }
+
+  Future<void> _loadTodoStats(int userId) async {
+    final now = DateTime.now();
+    int startMs;
+    int endMs = DateTime(now.year, now.month, now.day, 23, 59, 59).millisecondsSinceEpoch;
+
+    switch (_range) {
+      case 'today':
+        startMs = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+        break;
+      case 'week':
+        final weekStart = now.subtract(Duration(days: now.weekday - 1));
+        startMs = DateTime(weekStart.year, weekStart.month, weekStart.day).millisecondsSinceEpoch;
+        break;
+      case 'month':
+      default:
+        startMs = DateTime(now.year, now.month, 1).millisecondsSinceEpoch;
+        break;
+    }
+
+    final count = await context.read<TodoProvider>().getCompletedCount(userId, startMs, endMs);
+    if (mounted) setState(() => _todoCompleted = count);
   }
 
   List<MapEntry<String, int>> _aggregateByCategory(List<WorkLog> logs) {
@@ -81,7 +107,11 @@ class _StatsScreenState extends State<StatsScreen> {
                     ButtonSegment(value: 'month', label: Text('本月'), icon: Icon(Icons.calendar_month)),
                   ],
                   selected: {_range},
-                  onSelectionChanged: (v) => setState(() => _range = v.first),
+                  onSelectionChanged: (v) {
+                    setState(() => _range = v.first);
+                    final user = context.read<AuthProvider>().user;
+                    if (user != null) _loadTodoStats(user.id!);
+                  },
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -142,6 +172,27 @@ class _StatsScreenState extends State<StatsScreen> {
                     trailing: Text(_formatDuration(log.duration)),
                   );
                 }),
+                const SizedBox(height: 32),
+                Row(children: const [
+                  Icon(Icons.checklist, size: 20),
+                  SizedBox(width: 6),
+                  Text('待办统计',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ]),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _OverviewCard(
+                        title: '完成待办',
+                        value: '$_todoCompleted 个',
+                        icon: Icons.task_alt,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(child: Container()), // placeholder for future stats
+                  ],
+                ),
               ],
             ),
           ),
