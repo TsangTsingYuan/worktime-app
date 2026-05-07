@@ -120,7 +120,8 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
                 setState(() {
                   _hasDueDate = v;
                   if (v && _dueDate == null) {
-                    _dueDate = DateTime.now().add(const Duration(days: 1));
+                    final tomorrow = DateTime.now().add(const Duration(days: 1));
+                    _dueDate = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 18, 0);
                   }
                 });
               },
@@ -128,9 +129,9 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
             if (_hasDueDate && _dueDate != null)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.calendar_today),
+                leading: const Icon(Icons.access_time),
                 title: Text(
-                  '${_dueDate!.year}-${_dueDate!.month.toString().padLeft(2, '0')}-${_dueDate!.day.toString().padLeft(2, '0')}',
+                  '${_dueDate!.year}-${_dueDate!.month.toString().padLeft(2, '0')}-${_dueDate!.day.toString().padLeft(2, '0')}  ${_dueDate!.hour.toString().padLeft(2, '0')}:${_dueDate!.minute.toString().padLeft(2, '0')}',
                 ),
                 trailing: const Icon(Icons.edit),
                 onTap: () async {
@@ -140,7 +141,15 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
                     firstDate: DateTime(2020),
                     lastDate: DateTime(2030),
                   );
-                  if (picked != null) setState(() => _dueDate = picked);
+                  if (picked == null) return;
+                  final time = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay.fromDateTime(_dueDate!),
+                  );
+                  if (time == null) return;
+                  setState(() => _dueDate = DateTime(
+                    picked.year, picked.month, picked.day, time.hour, time.minute,
+                  ));
                 },
               ),
 

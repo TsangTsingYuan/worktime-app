@@ -108,6 +108,10 @@ class TodoCard extends StatelessWidget {
                         fontWeight: overdue ? FontWeight.bold : null,
                       ),
                     ),
+                    if (overdue)
+                      Text(' 已过期',
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold)),
                   ],
                   if (todo.recurringRule.isNotEmpty) ...[
                     const SizedBox(width: 6),
@@ -202,7 +206,7 @@ class TodoCard extends StatelessWidget {
 
   String _formatDate(int ms) {
     final d = DateTime.fromMillisecondsSinceEpoch(ms);
-    return '${d.month}/${d.day}';
+    return '${d.month}/${d.day} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 
   String _recurringLabel(String rule) {

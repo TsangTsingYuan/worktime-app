@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../providers/auth_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/work_log_provider.dart';
 
@@ -10,7 +11,7 @@ class ReminderService extends ChangeNotifier {
 
   void initializeVisibilityListener() {}
 
-  void start(SettingsProvider settings, WorkLogProvider workLogProvider) {}
+  void start(SettingsProvider settings, WorkLogProvider workLogProvider, AuthProvider auth) {}
 
   void stop() {
     _pendingMessage = null;

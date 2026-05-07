@@ -94,7 +94,7 @@ class _AppShellState extends State<AppShell> {
     }
 
     if (_auth.isLoggedIn) {
-      _reminderService.start(_settings, _workLog);
+      _reminderService.start(_settings, _workLog, _auth);
       _triggerSync();
     }
 
@@ -114,7 +114,7 @@ class _AppShellState extends State<AppShell> {
   void _onAuthChanged() {
     if (_auth.isLoggedIn && _auth.user != null) {
       _settings.loadFromJson(_auth.user!.config);
-      _reminderService.start(_settings, _workLog);
+      _reminderService.start(_settings, _workLog, _auth);
       _triggerSync();
     } else {
       _reminderService.stop();

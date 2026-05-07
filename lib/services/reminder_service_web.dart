@@ -1,12 +1,15 @@
 import 'dart:html' as html;
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../providers/auth_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/work_log_provider.dart';
+import 'database_helper.dart';
 
 class ReminderService extends ChangeNotifier {
   SettingsProvider? _settings;
   WorkLogProvider? _workLogProvider;
+  AuthProvider? _auth;
 
   // visibility
   bool _isTabVisible = true;
@@ -18,6 +21,10 @@ class ReminderService extends ChangeNotifier {
   // off-work
   Timer? _offWorkTimer;
   DateTime? _lastOffWorkRemindDate;
+
+  // todo due date
+  Timer? _todoTimer;
+  final Set<int> _notifiedTodoIds = {};
 
   // pending message for SnackBar
   String? _pendingMessage;
@@ -38,11 +45,13 @@ class ReminderService extends ChangeNotifier {
 
   // ---- lifecycle ----
 
-  void start(SettingsProvider settings, WorkLogProvider workLogProvider) {
+  void start(SettingsProvider settings, WorkLogProvider workLogProvider, AuthProvider auth) {
     _settings = settings;
     _workLogProvider = workLogProvider;
+    _auth = auth;
     _startSedentaryTimer();
     _startOffWorkTimer();
+    _startTodoTimer();
   }
 
   void stop() {
@@ -50,8 +59,11 @@ class ReminderService extends ChangeNotifier {
     _sedentaryTimer = null;
     _offWorkTimer?.cancel();
     _offWorkTimer = null;
+    _todoTimer?.cancel();
+    _todoTimer = null;
     _lastSedentaryRemindTime = null;
     _lastOffWorkRemindDate = null;
+    _notifiedTodoIds.clear();
     _pendingMessage = null;
     notifyListeners();
   }
@@ -142,6 +154,30 @@ class ReminderService extends ChangeNotifier {
     }
   }
 
+  // ---- todo due date reminder ----
+
+  void _startTodoTimer() {
+    _todoTimer?.cancel();
+    _notifiedTodoIds.clear();
+
+    _todoTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      _checkTodoReminder();
+    });
+  }
+
+  void _checkTodoReminder() {
+    final userId = _auth?.user?.id;
+    if (userId == null) return;
+
+    DatabaseHelper().getOverdueTodos(userId).then((overdue) {
+      for (final todo in overdue) {
+        if (todo.id != null && _notifiedTodoIds.add(todo.id!)) {
+          _notify('待办「${todo.title}」已过截止时间！');
+        }
+      }
+    });
+  }
+
   // ---- notification dispatch ----
 
   void _notify(String message) {
@@ -167,6 +203,7 @@ class ReminderService extends ChangeNotifier {
   void dispose() {
     _sedentaryTimer?.cancel();
     _offWorkTimer?.cancel();
+    _todoTimer?.cancel();
     html.document.removeEventListener('visibilitychange', _onVisibilityChange);
     super.dispose();
   }

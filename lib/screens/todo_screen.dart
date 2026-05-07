@@ -27,6 +27,7 @@ class _TodoScreenState extends State<TodoScreen> {
   int? _statusFilter; // null = all, 0 = pending, 2 = completed
   int? _priorityFilter;
   String _categoryFilter = '';
+  bool _overdueFilter = false;
   final TextEditingController _searchCtrl = TextEditingController();
 
   @override
@@ -56,6 +57,20 @@ class _TodoScreenState extends State<TodoScreen> {
   Future<void> _loadDayTodos() async {
     final user = context.read<AuthProvider>().user;
     if (user == null) return;
+
+    if (_overdueFilter) {
+      // Load all todos (across all dates) to find overdue items in memory
+      await context.read<TodoProvider>().loadTodos(
+            user.id!,
+            startDay: 0,
+            statusFilter: _statusFilter,
+            priorityFilter: _priorityFilter,
+            categoryFilter: _categoryFilter.isNotEmpty ? _categoryFilter : null,
+            searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+          );
+      return;
+    }
+
     final startMs = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day)
         .millisecondsSinceEpoch;
     final endMs = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, 23, 59, 59)
@@ -160,7 +175,10 @@ class _TodoScreenState extends State<TodoScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<TodoProvider>();
-    final todos = provider.todos.where((t) => t.parentId == null).toList();
+    var todos = provider.todos.where((t) => t.parentId == null).toList();
+    if (_overdueFilter) {
+      todos = todos.where((t) => t.isOverdue).toList();
+    }
     final isLoading = provider.loading;
     final isWide = _isWide(context);
 
@@ -366,6 +384,8 @@ class _TodoScreenState extends State<TodoScreen> {
                 _priorityChip('中', 1),
                 const SizedBox(width: 6),
                 _priorityChip('低', 0),
+                const SizedBox(width: 6),
+                _overdueChip(),
               ],
             ),
           ),
@@ -415,6 +435,24 @@ class _TodoScreenState extends State<TodoScreen> {
     }
   }
 
+  Widget _overdueChip() {
+    return FilterChip(
+      label: Text('已过期',
+          style: TextStyle(
+            fontSize: 12,
+            color: _overdueFilter ? Colors.white : Colors.red,
+          )),
+      selected: _overdueFilter,
+      selectedColor: Colors.red,
+      checkmarkColor: Colors.white,
+      visualDensity: VisualDensity.compact,
+      onSelected: (v) {
+        setState(() => _overdueFilter = v);
+        _applyFilters();
+      },
+    );
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -423,7 +461,7 @@ class _TodoScreenState extends State<TodoScreen> {
           Icon(Icons.task_alt, size: 64, color: Colors.grey.shade300),
           const SizedBox(height: 12),
           Text(
-            _searchQuery.isNotEmpty || _statusFilter != null || _priorityFilter != null
+            _searchQuery.isNotEmpty || _statusFilter != null || _priorityFilter != null || _overdueFilter
                 ? '没有匹配的待办'
                 : '这一天没有待办',
             style: TextStyle(fontSize: 16, color: Colors.grey.shade500),
