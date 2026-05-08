@@ -114,6 +114,7 @@ class _TodoScreenState extends State<TodoScreen> {
       ),
     );
     if (todo != null) {
+      if (!mounted) return;
       await context.read<TodoProvider>().addTodo(todo);
       _loadMonth();
     }
@@ -130,6 +131,7 @@ class _TodoScreenState extends State<TodoScreen> {
       ),
     );
     if (todo != null) {
+      if (!mounted) return;
       await context.read<TodoProvider>().updateTodo(todo);
       _loadMonth();
     }
@@ -157,6 +159,7 @@ class _TodoScreenState extends State<TodoScreen> {
       ),
     );
     if (confirmed == true && todo.id != null) {
+      if (!mounted) return;
       await context.read<TodoProvider>().deleteTodo(todo.id!);
       _loadMonth();
     }

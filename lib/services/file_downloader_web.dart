@@ -1,10 +1,12 @@
-import 'dart:html' as html;
+import 'dart:js_interop';
+import 'package:web/web.dart' as web;
 
 void downloadCsv(String content, String filename) {
-  final blob = html.Blob([content], 'text/csv;charset=utf-8');
-  final url = html.Url.createObjectUrlFromBlob(blob);
-  final anchor = html.AnchorElement(href: url)
+  final blob = web.Blob([content.toJS].toJS, web.BlobPropertyBag(type: 'text/csv;charset=utf-8'));
+  final url = web.URL.createObjectURL(blob);
+  final anchor = web.document.createElement('a') as web.HTMLAnchorElement
+    ..href = url
     ..setAttribute('download', filename);
   anchor.click();
-  html.Url.revokeObjectUrl(url);
+  web.URL.revokeObjectURL(url);
 }

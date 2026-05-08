@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/user.dart';
@@ -99,26 +101,46 @@ class DatabaseHelper {
     }
   }
 
+  // ====================== Password Hashing ======================
+
+  String _hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+
   // ====================== User CRUD ======================
 
   Future<User?> login(String phone, String password) async {
+    final hashed = _hashPassword(password);
     try {
       final db = await database;
-      final maps = await db.query('user',
+      // Try hashed password first
+      var maps = await db.query('user',
+          where: 'phone = ? AND password = ?', whereArgs: [phone, hashed]);
+      if (maps.isNotEmpty) return User.fromMap(maps.first);
+      // Fallback: check legacy plaintext password and upgrade
+      maps = await db.query('user',
           where: 'phone = ? AND password = ?', whereArgs: [phone, password]);
-      if (maps.isEmpty) return null;
-      return User.fromMap(maps.first);
+      if (maps.isNotEmpty) {
+        // Upgrade to hashed password
+        await db.update('user', {'password': hashed},
+            where: 'id = ?', whereArgs: [maps.first['id']]);
+        return User.fromMap(maps.first);
+      }
+      return null;
     } catch (_) {
       return null;
     }
   }
 
   Future<User?> register(String phone, String password, String nickname) async {
+    final hashed = _hashPassword(password);
     try {
       final db = await database;
       final id = await db.insert('user', {
         'phone': phone,
-        'password': password,
+        'password': hashed,
         'nickname': nickname,
         'config':
             '{"workStart":"09:00","workEnd":"18:00","breakDuration":60,"sedentaryReminder":0,"offWorkReminder":false}',
@@ -341,5 +363,20 @@ class DatabaseHelper {
     await db.delete('todo');
     await db.delete('work_log');
     await db.delete('user');
+  }
+
+  /// Get the latest updatedAt timestamp across work_log and todo tables
+  Future<int> getLastSyncTimestamp(int userId) async {
+    final db = await database;
+    final result = await db.rawQuery('''
+      SELECT MAX(maxTime) as lastSync FROM (
+        SELECT MAX(updatedAt) as maxTime FROM work_log WHERE userId = ?
+        UNION ALL
+        SELECT MAX(updatedAt) as maxTime FROM todo WHERE userId = ?
+      )
+    ''', [userId, userId]);
+    final lastSync = result.first['lastSync'];
+    if (lastSync == null) return 0;
+    return lastSync as int;
   }
 }

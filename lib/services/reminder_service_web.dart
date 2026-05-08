@@ -1,6 +1,7 @@
-import 'dart:html' as html;
 import 'dart:async';
+import 'dart:js_interop';
 import 'package:flutter/foundation.dart';
+import 'package:web/web.dart' as web;
 import '../providers/auth_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/work_log_provider.dart';
@@ -35,12 +36,12 @@ class ReminderService extends ChangeNotifier {
   // ---- visibility ----
 
   void initializeVisibilityListener() {
-    _isTabVisible = html.document.visibilityState == 'visible';
-    html.document.addEventListener('visibilitychange', _onVisibilityChange);
+    _isTabVisible = web.document.visibilityState == 'visible';
+    web.document.addEventListener('visibilitychange', _onVisibilityChange.toJS);
   }
 
-  void _onVisibilityChange(html.Event _) {
-    _isTabVisible = html.document.visibilityState == 'visible';
+  void _onVisibilityChange(web.Event _) {
+    _isTabVisible = web.document.visibilityState == 'visible';
   }
 
   // ---- lifecycle ----
@@ -190,13 +191,12 @@ class ReminderService extends ChangeNotifier {
   }
 
   void _showBrowserNotification(String message) {
-    if (html.Notification.supported) {
-      html.Notification.requestPermission().then((perm) {
-        if (perm == 'granted') {
-          html.Notification('工作提醒', body: message);
-        }
-      });
-    }
+    final promise = web.Notification.requestPermission();
+    promise.toDart.then((perm) {
+      if (perm == 'granted'.toJS) {
+        web.Notification('工作提醒', web.NotificationOptions(body: message));
+      }
+    });
   }
 
   @override
@@ -204,7 +204,7 @@ class ReminderService extends ChangeNotifier {
     _sedentaryTimer?.cancel();
     _offWorkTimer?.cancel();
     _todoTimer?.cancel();
-    html.document.removeEventListener('visibilitychange', _onVisibilityChange);
+    web.document.removeEventListener('visibilitychange', _onVisibilityChange.toJS);
     super.dispose();
   }
 }

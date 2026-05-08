@@ -1,5 +1,5 @@
 name: worktime_app
-description: "A new Flutter project."
+description: "工作打卡 - 工时记录与待办管理工具"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -31,6 +31,8 @@ dependencies:
   flutter:
     sdk: flutter
 
+  crypto: ^3.0.0
+  web: ^1.1.0
   cupertino_icons: ^1.0.8
   provider: ^6.1.2
   sqflite: ^2.4.1

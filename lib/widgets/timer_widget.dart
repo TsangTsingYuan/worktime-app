@@ -1,28 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/timer_provider.dart';
 
 class TimerWidget extends StatelessWidget {
-  final String title;
-  final String category;
-  final String formattedTime;
-  final bool isPaused;
-  final VoidCallback onPause;
   final VoidCallback onStop;
 
   const TimerWidget({
     super.key,
-    required this.title,
-    required this.category,
-    required this.formattedTime,
-    required this.isPaused,
-    required this.onPause,
     required this.onStop,
   });
 
   @override
   Widget build(BuildContext context) {
+    final timer = context.watch<TimerProvider>();
+    if (timer.status == TimerStatus.idle) return const SizedBox.shrink();
+
+    final isPaused = timer.status == TimerStatus.paused;
+    final color = isPaused ? Colors.orange : Colors.blue;
+
     return Card(
       margin: const EdgeInsets.all(16),
-      color: isPaused ? Colors.orange.shade50 : Colors.blue.shade50,
+      color: (isPaused ? Colors.orange.shade50 : Colors.blue.shade50),
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -32,7 +30,7 @@ class TimerWidget extends StatelessWidget {
               children: [
                 Icon(
                   isPaused ? Icons.pause_circle : Icons.play_circle,
-                  color: isPaused ? Colors.orange : Colors.blue,
+                  color: color,
                   size: 20,
                 ),
                 const SizedBox(width: 8),
@@ -48,10 +46,10 @@ class TimerWidget extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              title,
+              timer.taskTitle,
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-            if (category.isNotEmpty) ...[
+            if (timer.taskCategory.isNotEmpty) ...[
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
@@ -59,12 +57,12 @@ class TimerWidget extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(category, style: const TextStyle(fontSize: 13)),
+                child: Text(timer.taskCategory, style: const TextStyle(fontSize: 13)),
               ),
             ],
             const SizedBox(height: 16),
             Text(
-              formattedTime,
+              timer.formattedTime,
               style: const TextStyle(
                 fontSize: 48,
                 fontWeight: FontWeight.bold,
@@ -76,7 +74,7 @@ class TimerWidget extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 ElevatedButton.icon(
-                  onPressed: onPause,
+                  onPressed: isPaused ? timer.resume : timer.pause,
                   icon: Icon(isPaused ? Icons.play_arrow : Icons.pause),
                   label: Text(isPaused ? '继续' : '暂停'),
                   style: ElevatedButton.styleFrom(

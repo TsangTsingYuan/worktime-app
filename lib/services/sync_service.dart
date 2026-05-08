@@ -30,6 +30,11 @@ class SyncService extends ChangeNotifier {
     if (_isSyncing) return SyncResult(ok: true, message: 'Already syncing');
     if (!_hasServer) return SyncResult(ok: false, message: 'No server configured');
 
+    // Initialize lastSync from local DB to avoid pulling all history
+    if (_lastSyncAt == 0) {
+      _lastSyncAt = await _db.getLastSyncTimestamp(userId);
+    }
+
     _isSyncing = true;
     notifyListeners();
 

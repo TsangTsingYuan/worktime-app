@@ -96,7 +96,7 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
 
             // Category
             DropdownButtonFormField<String>(
-              value: _category.isEmpty ? null : _category,
+              initialValue: _category.isEmpty ? null : _category,
               decoration: const InputDecoration(
                 labelText: '分类',
                 border: OutlineInputBorder(),
@@ -142,11 +142,13 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
                     lastDate: DateTime(2030),
                   );
                   if (picked == null) return;
+                  if (!context.mounted) return;
                   final time = await showTimePicker(
                     context: context,
                     initialTime: TimeOfDay.fromDateTime(_dueDate!),
                   );
                   if (time == null) return;
+                  if (!context.mounted) return;
                   setState(() => _dueDate = DateTime(
                     picked.year, picked.month, picked.day, time.hour, time.minute,
                   ));
@@ -156,7 +158,7 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
             // Recurring
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: _recurringRule,
+              initialValue: _recurringRule,
               decoration: const InputDecoration(
                 labelText: '重复',
                 border: OutlineInputBorder(),

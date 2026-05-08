@@ -216,7 +216,13 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
     if (result != null && result.isNotEmpty) {
+      if (!context.mounted) return;
       context.read<AuthProvider>().updateProfile(result);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Row(children: const [Icon(Icons.check_circle, color: Colors.white, size: 20), SizedBox(width: 8), Text('昵称已更新')])),
+        );
+      }
     }
   }
 
@@ -226,6 +232,7 @@ class SettingsScreen extends StatelessWidget {
       initialTime: TimeOfDay.now(),
     );
     if (time == null) return;
+    if (!context.mounted) return;
     final formatted = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     final settings = context.read<SettingsProvider>().settings;
     final user = context.read<AuthProvider>().user;
@@ -274,6 +281,7 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
     if (result != null) {
+      if (!context.mounted) return;
       final mins = int.tryParse(result) ?? 60;
       final settings = context.read<SettingsProvider>().settings;
       final user = context.read<AuthProvider>().user;
@@ -328,6 +336,7 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
     if (result != null) {
+      if (!context.mounted) return;
       final minutes = int.tryParse(result) ?? 0;
       final s = context.read<SettingsProvider>().settings;
       final u = context.read<AuthProvider>().user;
@@ -419,6 +428,7 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
     if (confirmed == true) {
+      if (!context.mounted) return;
       final user = context.read<AuthProvider>().user;
       if (user != null) {
         await context.read<WorkLogProvider>().clearTodayLogs(user.id!);

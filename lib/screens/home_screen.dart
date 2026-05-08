@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/timer_provider.dart';
 import '../providers/work_log_provider.dart';
+import '../services/sync_service.dart';
 import '../widgets/task_card.dart';
 import '../widgets/timer_widget.dart';
 
@@ -110,6 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (result == true && titleCtrl.text.trim().isNotEmpty) {
+      if (!mounted) return;
       final user = context.read<AuthProvider>().user;
       if (user == null) return;
       final id = await context
@@ -154,6 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     if (result == true) {
+      if (!mounted) return;
       final id = timer.workLogId;
       final secs = timer.elapsedSeconds;
       if (id != null) {
@@ -167,10 +170,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final titleCtrl = TextEditingController();
     final notesCtrl = TextEditingController();
     String category = '开发';
-    DateTime startDate = DateTime.now();
+    final now = DateTime.now();
+    DateTime startDate = now;
     TimeOfDay startTime = TimeOfDay.now();
-    DateTime endDate = DateTime.now();
-    TimeOfDay endTime = TimeOfDay.now();
+    DateTime endDate = now;
+    // Pre-fill end time as start time + 1 hour
+    final endHour = now.add(const Duration(hours: 1));
+    TimeOfDay endTime = TimeOfDay.fromDateTime(endHour);
 
     final result = await showDialog<bool>(
       context: context,
@@ -227,6 +233,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             firstDate: DateTime(2020),
                             lastDate: DateTime.now(),
                           );
+                          if (!ctx.mounted) return;
                           if (d != null) {
                             setDState(() => startDate = d);
                           }
@@ -234,6 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             context: ctx,
                             initialTime: startTime,
                           );
+                          if (!ctx.mounted) return;
                           if (t != null) setDState(() => startTime = t);
                         },
                       ),
@@ -256,11 +264,13 @@ class _HomeScreenState extends State<HomeScreen> {
                             firstDate: DateTime(2020),
                             lastDate: DateTime.now(),
                           );
+                          if (!ctx.mounted) return;
                           if (d != null) setDState(() => endDate = d);
                           final t = await showTimePicker(
                             context: ctx,
                             initialTime: endTime,
                           );
+                          if (!ctx.mounted) return;
                           if (t != null) setDState(() => endTime = t);
                         },
                       ),
@@ -302,6 +312,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (result == true && titleCtrl.text.trim().isNotEmpty) {
+      if (!mounted) return;
       final user = context.read<AuthProvider>().user;
       if (user == null) return;
       final sMs = DateTime(startDate.year, startDate.month, startDate.day,
@@ -332,7 +343,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width > 600;
-    final timer = context.watch<TimerProvider>();
     final logs = context.watch<WorkLogProvider>().todayLogs;
 
     return Scaffold(
@@ -340,6 +350,22 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('工作打卡'),
         centerTitle: false,
         actions: [
+          Consumer<SyncService>(
+            builder: (context, sync, child) {
+              if (!sync.hasServer) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Tooltip(
+                  message: sync.isSyncing ? '同步中...' : '同步完成',
+                  child: Icon(
+                    sync.isSyncing ? Icons.sync : Icons.cloud_done,
+                    size: 20,
+                    color: sync.isSyncing ? Colors.orange : Colors.green,
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: '退出登录',
@@ -350,33 +376,27 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 900),
-          child: isWide ? _buildWideLayout(timer, logs) : _buildNarrowLayout(timer, logs),
+          child: isWide ? _buildWideLayout(logs) : _buildNarrowLayout(logs),
         ),
       ),
-      floatingActionButton: timer.status == TimerStatus.idle
-          ? FloatingActionButton.extended(
-              onPressed: _startNewTask,
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('开始工作'),
-            )
-          : null,
+      floatingActionButton: Consumer<TimerProvider>(
+        builder: (context, timer, child) => timer.status == TimerStatus.idle
+            ? FloatingActionButton.extended(
+                onPressed: _startNewTask,
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('开始工作'),
+              )
+            : const SizedBox.shrink(),
+      ),
     );
   }
 
-  Widget _buildNarrowLayout(TimerProvider timer, List logs) {
+  Widget _buildNarrowLayout(List logs) {
     return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (timer.status != TimerStatus.idle)
-            TimerWidget(
-              title: timer.taskTitle,
-              category: timer.taskCategory,
-              formattedTime: timer.formattedTime,
-              isPaused: timer.status == TimerStatus.paused,
-              onPause: timer.status == TimerStatus.running ? timer.pause : timer.resume,
-              onStop: _stopTask,
-            ),
+          TimerWidget(onStop: _stopTask),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
@@ -425,7 +445,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildWideLayout(TimerProvider timer, List logs) {
+  Widget _buildWideLayout(List logs) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -433,15 +453,7 @@ class _HomeScreenState extends State<HomeScreen> {
           flex: 3,
           child: Column(
             children: [
-              if (timer.status != TimerStatus.idle)
-                TimerWidget(
-                  title: timer.taskTitle,
-                  category: timer.taskCategory,
-                  formattedTime: timer.formattedTime,
-                  isPaused: timer.status == TimerStatus.paused,
-                  onPause: timer.status == TimerStatus.running ? timer.pause : timer.resume,
-                  onStop: _stopTask,
-                ),
+              TimerWidget(onStop: _stopTask),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
@@ -502,6 +514,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildQuickStats() {
+    return const _QuickStatsCard();
+  }
+}
+
+class _QuickStatsCard extends StatelessWidget {
+  const _QuickStatsCard();
+
+  @override
+  Widget build(BuildContext context) {
     final logs = context.watch<WorkLogProvider>().todayLogs;
     int totalSecs = 0;
     int completed = 0;
