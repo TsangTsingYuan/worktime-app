@@ -218,13 +218,16 @@ class _TodoScreenState extends State<TodoScreen> {
                   ),
                 ],
               )
-            : Column(
-                children: [
-                  _buildCalendar(),
-                  _buildFilters(),
-                  Divider(height: 1, color: Colors.grey.shade300),
-                  Expanded(child: _buildTodoList(isLoading, todos)),
-                ],
+            : SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildCalendar(),
+                    _buildFilters(),
+                    Divider(height: 1, color: Colors.grey.shade300),
+                    _buildTodoList(isLoading, todos),
+                  ],
+                ),
               ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -236,7 +239,10 @@ class _TodoScreenState extends State<TodoScreen> {
 
   Widget _buildTodoList(bool isLoading, List<TodoItem> todos) {
     if (isLoading) return const Center(child: CircularProgressIndicator());
-    if (todos.isEmpty) return _buildEmptyState();
+    if (todos.isEmpty) {
+      final empty = _buildEmptyState();
+      return _isWide(context) ? empty : SizedBox(height: 300, child: empty);
+    }
 
     if (_isWide(context)) {
       return GridView.builder(
@@ -261,6 +267,8 @@ class _TodoScreenState extends State<TodoScreen> {
     }
 
     return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.only(top: 4, bottom: 80),
       itemCount: todos.length,
       itemBuilder: (_, i) => TodoCard(

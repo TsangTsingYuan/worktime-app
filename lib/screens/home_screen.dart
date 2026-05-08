@@ -364,57 +364,64 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildNarrowLayout(TimerProvider timer, List logs) {
-    return Column(
-      children: [
-        if (timer.status != TimerStatus.idle)
-          TimerWidget(
-            title: timer.taskTitle,
-            category: timer.taskCategory,
-            formattedTime: timer.formattedTime,
-            isPaused: timer.status == TimerStatus.paused,
-            onPause: timer.status == TimerStatus.running ? timer.pause : timer.resume,
-            onStop: _stopTask,
-          ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.list_alt, size: 20),
-                  const SizedBox(width: 6),
-                  const Text('今日记录', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                ],
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: _addManualLog,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('补录'),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: logs.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.inbox, size: 48, color: Colors.grey),
-                      SizedBox(height: 8),
-                      Text('暂无记录，点击下方按钮开始'),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: logs.length,
-                  itemBuilder: (_, i) => TaskCard(log: logs[i]),
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (timer.status != TimerStatus.idle)
+            TimerWidget(
+              title: timer.taskTitle,
+              category: timer.taskCategory,
+              formattedTime: timer.formattedTime,
+              isPaused: timer.status == TimerStatus.paused,
+              onPause: timer.status == TimerStatus.running ? timer.pause : timer.resume,
+              onStop: _stopTask,
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.list_alt, size: 20),
+                    const SizedBox(width: 6),
+                    const Text('今日记录', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
                 ),
-        ),
-      ],
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _addManualLog,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('补录'),
+                ),
+              ],
+            ),
+          ),
+          if (logs.isEmpty)
+            SizedBox(
+              height: 300,
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.inbox, size: 48, color: Colors.grey),
+                    SizedBox(height: 8),
+                    Text('暂无记录，点击下方按钮开始'),
+                  ],
+                ),
+              ),
+            )
+          else
+            ListView.builder(
+              shrinkWrap: true,
+              physics: NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: logs.length,
+              itemBuilder: (_, i) => TaskCard(log: logs[i]),
+            ),
+        ],
+      ),
     );
   }
 
