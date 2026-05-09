@@ -9,8 +9,9 @@
 - 手动补录历史任务
 - 按日/周/月统计工作时长
 - 分类统计（开发、会议、学习、沟通、文档、其他）
+- 待办管理（日历视图、优先级、截止日期、重复规则）
 - 数据导出 CSV
-- 久坐提醒 + 下班提醒
+- 久坐提醒 + 下班提醒 + 待办截止提醒
 - **跨设备数据同步**（v2 新增）
 
 ---
@@ -27,7 +28,7 @@
 │     │         │           │              │            │
 │  ┌──┴─────────┴───────────┴──────────────┴────────┐  │
 │  │               Provider 层                       │  │
-│  │  AuthProvider  TimerProvider  WorkLogProvider  │  │
+│  │  AuthProvider  TimerProvider  WorkLogProvider  TodoProvider │  │
 │  │  SettingsProvider  ReminderService            │  │
 │  └─────────────────────┬─────────────────────────┘  │
 │                        │                             │
@@ -41,7 +42,7 @@
 │  │          Platform Adapter (条件导入)            │  │
 │  │  Web: sqflite_common_ffi_web (OPFS+WASM)     │  │
 │  │  Mobile: sqflite (原生 SQLite)                 │  │
-│  │  Web: ReminderService_web (dart:html)         │  │
+│  │  Web: ReminderService_web (package:web)         │  │
 │  │  Mobile: ReminderService (flutter_notif.)     │  │
 │  └───────────────────────────────────────────────┘  │
 └──────────────────────┬─────────────────────────────┘
@@ -96,6 +97,8 @@
      ├──→ 写入本地 SQLite
      │
      └──→ UI 更新
+
+AppBar 同步状态指示器：有后端时显示绿色云朵图标（空闲）/ 橙色旋转图标（同步中），无后端时隐藏。
 ```
 
 ### 开始一个任务
@@ -163,6 +166,28 @@ CREATE TABLE work_log (
 用户表新增：
 - `server_id TEXT`
 - `token TEXT NOT NULL DEFAULT ''`
+
+**表：todo**
+```sql
+CREATE TABLE todo (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  userId INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  priority INTEGER NOT NULL DEFAULT 1,
+  status INTEGER NOT NULL DEFAULT 0,
+  dueDate INTEGER,
+  category TEXT NOT NULL DEFAULT '',
+  linkedWorkLogId INTEGER,
+  parentId INTEGER,
+  recurringRule TEXT NOT NULL DEFAULT '',
+  sortOrder INTEGER NOT NULL DEFAULT 0,
+  createdAt INTEGER NOT NULL DEFAULT 0,
+  updatedAt INTEGER NOT NULL DEFAULT 0,
+  isSynced INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY (userId) REFERENCES user(id)
+);
+```
 
 ### 服务端 SQLite (worktime_server/data.db)
 
@@ -240,6 +265,16 @@ CREATE UNIQUE INDEX idx_work_logs_client ON work_logs(user_id, client_id);
 }
 ```
 
+
+### 待办
+
+| Method | Path | Body/Query | 说明 |
+|--------|------|------------|------|
+| GET | `/todos` | `?since=timestamp` | 增量获取待办 |
+| POST | `/todos` | `{title, priority, dueDate, ...}` | 创建待办 |
+| PUT | `/todos/:id` | `{title, status, ...}` | 更新待办 |
+| DELETE | `/todos/:id` | — | 删除待办 |
+
 ### 用户设置
 
 | Method | Path | Body | 说明 |
@@ -251,7 +286,7 @@ CREATE UNIQUE INDEX idx_work_logs_client ON work_logs(user_id, client_id);
 
 ## 安全设计
 
-- **密码**：服务端使用 bcrypt 哈希存储，不存明文
+- **密码**：服务端使用 bcrypt 哈希存储，不存明文；客户端使用 SHA-256 哈希后存储到本地 SQLite
 - **JWT**：登录/注册后发放 JWT，有效期 7 天
 - **CORS**：仅允许来自 GitHub Pages 域名和白名单域名的跨域请求
 - **数据隔离**：每个 JWT 只允许访问对应用户的数据
@@ -290,17 +325,20 @@ worktime_app/                          # Flutter 前端项目
 │   ├── main.dart                      # 入口 + MultiProvider
 │   ├── models/
 │   │   ├── user.dart                  # 用户模型
-│   │   └── work_log.dart              # 工作日志模型
+│   │   ├── work_log.dart              # 工作日志模型
+│   │   └── todo_item.dart            # 待办模型
 │   ├── providers/
 │   │   ├── auth_provider.dart         # 认证状态管理
 │   │   ├── timer_provider.dart        # 计时器状态管理
 │   │   ├── work_log_provider.dart     # 日志 CRUD + 同步触发
-│   │   └── settings_provider.dart     # 配置管理
+│   │   ├── settings_provider.dart     # 配置管理
+│   │   └── todo_provider.dart        # 待办 CRUD
 │   ├── screens/
 │   │   ├── login_screen.dart          # 登录/注册页面
 │   │   ├── home_screen.dart           # 主页（计时 + 今日记录）
 │   │   ├── stats_screen.dart          # 统计页面
-│   │   └── settings_screen.dart       # 设置页面
+│   │   ├── settings_screen.dart       # 设置页面
+│   │   └── todo_screen.dart          # 待办管理
 │   ├── services/
 │   │   ├── database_helper.dart       # SQLite CRUD
 │   │   ├── api_client.dart            # HTTP API 客户端
@@ -311,7 +349,9 @@ worktime_app/                          # Flutter 前端项目
 │   │   └── reminder_service_web.dart  # Web 提醒实现
 │   └── widgets/
 │       ├── task_card.dart             # 任务卡片组件
-│       └── timer_widget.dart          # 计时器组件
+│       ├── timer_widget.dart          # 计时器组件
+│       ├── todo_card.dart            # 待办卡片组件
+│       └── todo_edit_dialog.dart     # 待办编辑弹窗
 ├── web/                               # Web 配置
 │   ├── index.html
 │   ├── manifest.json

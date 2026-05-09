@@ -1,6 +1,6 @@
 # 开发进度跟踪
 
-> 更新日期：2026-05-05
+> 更新日期：2026-05-08
 
 ## 总体进度
 
@@ -134,9 +134,31 @@ flutter build web --no-source-maps \
 
 ---
 
+---
+
+## Phase 4: 代码优化（2026-05-08 已完成）
+
+基于测试报告《测试报告_20260508.md》的 11 项修复优化：
+
+| # | 项目 | 类型 | 状态 |
+|---|------|------|------|
+| 1 | SHA-256 密码哈希存储 | 修复 | ✅ |
+| 2 | TimerWidget 独立监听，避免整页重建 | 性能 | ✅ |
+| 3 | DropdownButtonFormField `value` → `initialValue` | 修复 | ✅ |
+| 4 | `dart:html` → `package:web` + `dart:js_interop` | 修复 | ✅ |
+| 5 | `_buildQuickStats()` 拆分为独立组件 | 性能 | ✅ |
+| 6 | SyncService 首次同步从本地 DB 读取 lastSyncAt | 性能 | ✅ |
+| 7 | AppBar 同步状态指示器 | UX | ✅ |
+| 8 | 修改昵称后 SnackBar 反馈 | UX | ✅ |
+| 9 | 手动补录预填结束时间为开始+1h | UX | ✅ |
+| 10 | PWA manifest 描述更新 | 工程化 | ✅ |
+| 11 | async 操作后 `if (!mounted) return;` 保护 | 工程化 | ✅ |
+
+---
+
 ## 已知问题
 
-1. Web 端 `dart:html` 已弃用，后续需迁移至 `package:web` + `dart:js_interop`
+1. ~~Web 端 `dart:html` 已弃用，后续需迁移至 `package:web` + `dart:js_interop`~~ ✅ **已完成**
 2. 安卓/iOS 平台目录为空，需重新生成
 3. 无单元测试覆盖同步逻辑
 4. SettingsProvider 同步到服务端的功能尚未接入 SyncService

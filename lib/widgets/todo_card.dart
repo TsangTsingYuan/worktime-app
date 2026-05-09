@@ -139,7 +139,8 @@ class TodoCard extends StatelessWidget {
                   ),
                 PopupMenuButton<String>(
                   itemBuilder: (ctx) => [
-                    const PopupMenuItem(value: 'edit', child: Text('编辑')),
+                    if (!overdue)
+                      const PopupMenuItem(value: 'edit', child: Text('编辑')),
                     const PopupMenuItem(value: 'delete', child: Text('删除')),
                   ],
                   onSelected: (v) {
@@ -150,7 +151,7 @@ class TodoCard extends StatelessWidget {
                 ),
               ],
             ),
-            onTap: onEdit,
+            onTap: overdue ? null : onEdit,
           ),
 
           // Subtasks
