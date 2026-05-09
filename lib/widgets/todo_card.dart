@@ -59,7 +59,7 @@ class TodoCard extends StatelessWidget {
           ListTile(
             leading: Checkbox(
               value: completed,
-              onChanged: (_) => onToggle?.call(),
+              onChanged: overdue ? null : (_) => onToggle?.call(),
               shape: const CircleBorder(),
               activeColor: Colors.green,
             ),
@@ -129,7 +129,7 @@ class TodoCard extends StatelessWidget {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!completed && onStartTimer != null)
+                if (!completed && !overdue && onStartTimer != null)
                   IconButton(
                     icon: const Icon(Icons.timer_outlined, size: 20),
                     tooltip: '开始计时',
@@ -141,7 +141,8 @@ class TodoCard extends StatelessWidget {
                   itemBuilder: (ctx) => [
                     if (!overdue)
                       const PopupMenuItem(value: 'edit', child: Text('编辑')),
-                    const PopupMenuItem(value: 'delete', child: Text('删除')),
+                    if (!overdue)
+                      const PopupMenuItem(value: 'delete', child: Text('删除')),
                   ],
                   onSelected: (v) {
                     if (v == 'edit') onEdit?.call();
