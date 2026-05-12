@@ -26,9 +26,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (user == null) return;
     await context.read<WorkLogProvider>().loadTodayLogs(user.id!);
     if (mounted) {
-      final activeLog = context.read<WorkLogProvider>().activeLog;
-      if (activeLog != null && activeLog.status == 0) {
-        context.read<TimerProvider>().resumeFromOngoingTask(activeLog);
+      final timerProvider = context.read<TimerProvider>();
+      final ongoingLogs = context
+          .read<WorkLogProvider>()
+          .todayLogs
+          .where((l) => l.status == 0);
+      for (final log in ongoingLogs) {
+        timerProvider.resumeFromOngoingTask(log);
       }
     }
   }
@@ -128,8 +132,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _stopTask() async {
+  Future<void> _stopTask(int workLogId) async {
     final timer = context.read<TimerProvider>();
+    final state = timer.getTimer(workLogId);
+    if (state == null) return;
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -138,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
           SizedBox(width: 8),
           Text('结束任务'),
         ]),
-        content: Text('任务 "${timer.taskTitle}"\n\n计时：${timer.formattedTime}\n\n确认结束吗？'),
+        content: Text('任务 "${state.taskTitle}"\n\n计时：${state.formattedTime}\n\n确认结束吗？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -157,12 +163,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (result == true) {
       if (!mounted) return;
-      final id = timer.workLogId;
-      final secs = timer.elapsedSeconds;
-      if (id != null) {
-        await context.read<WorkLogProvider>().endTask(id, secs);
-      }
-      timer.stop();
+      await context.read<WorkLogProvider>().endTask(workLogId, state.elapsedSeconds);
+      timer.stop(workLogId);
     }
   }
 
@@ -379,24 +381,25 @@ class _HomeScreenState extends State<HomeScreen> {
           child: isWide ? _buildWideLayout(logs) : _buildNarrowLayout(logs),
         ),
       ),
-      floatingActionButton: Consumer<TimerProvider>(
-        builder: (context, timer, child) => timer.status == TimerStatus.idle
-            ? FloatingActionButton.extended(
-                onPressed: _startNewTask,
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('开始工作'),
-              )
-            : const SizedBox.shrink(),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _startNewTask,
+        icon: const Icon(Icons.play_arrow),
+        label: const Text('开始工作'),
       ),
     );
   }
 
   Widget _buildNarrowLayout(List logs) {
+    final activeTimers = context.watch<TimerProvider>().activeTimers;
+
     return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          TimerWidget(onStop: _stopTask),
+          ...activeTimers.map((t) => TimerWidget(
+                workLogId: t.workLogId,
+                onStop: _stopTask,
+              )),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
@@ -453,7 +456,12 @@ class _HomeScreenState extends State<HomeScreen> {
           flex: 3,
           child: Column(
             children: [
-              TimerWidget(onStop: _stopTask),
+              ...context.watch<TimerProvider>().activeTimers.map(
+                    (t) => TimerWidget(
+                      workLogId: t.workLogId,
+                      onStop: _stopTask,
+                    ),
+                  ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(

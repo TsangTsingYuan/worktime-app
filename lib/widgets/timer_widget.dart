@@ -3,17 +3,20 @@ import 'package:provider/provider.dart';
 import '../providers/timer_provider.dart';
 
 class TimerWidget extends StatelessWidget {
-  final VoidCallback onStop;
+  final int workLogId;
+  final ValueChanged<int> onStop;
 
   const TimerWidget({
     super.key,
+    required this.workLogId,
     required this.onStop,
   });
 
   @override
   Widget build(BuildContext context) {
-    final timer = context.watch<TimerProvider>();
-    if (timer.status == TimerStatus.idle) return const SizedBox.shrink();
+    final provider = context.watch<TimerProvider>();
+    final timer = provider.getTimer(workLogId);
+    if (timer == null) return const SizedBox.shrink();
 
     final isPaused = timer.status == TimerStatus.paused;
     final color = isPaused ? Colors.orange : Colors.blue;
@@ -74,7 +77,9 @@ class TimerWidget extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 ElevatedButton.icon(
-                  onPressed: isPaused ? timer.resume : timer.pause,
+                  onPressed: isPaused
+                      ? () => provider.resume(workLogId)
+                      : () => provider.pause(workLogId),
                   icon: Icon(isPaused ? Icons.play_arrow : Icons.pause),
                   label: Text(isPaused ? '继续' : '暂停'),
                   style: ElevatedButton.styleFrom(
@@ -84,7 +89,7 @@ class TimerWidget extends StatelessWidget {
                 ),
                 const SizedBox(width: 16),
                 OutlinedButton.icon(
-                  onPressed: onStop,
+                  onPressed: () => onStop(workLogId),
                   icon: const Icon(Icons.stop, color: Colors.red),
                   label: const Text('结束', style: TextStyle(color: Colors.red)),
                   style: OutlinedButton.styleFrom(
