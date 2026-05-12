@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
-import 'package:sqflite/sqflite.dart';
+import 'services/database_stub_init.dart'
+    if (dart.library.html) 'services/database_web_init.dart';
 import 'models/todo_item.dart';
 import 'providers/auth_provider.dart';
 import 'providers/timer_provider.dart';
@@ -30,7 +30,7 @@ final _syncService = SyncService(_apiClient, _db);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  databaseFactory = databaseFactoryFfiWebNoWebWorker;
+  configureDatabase();
   runApp(const WorktimeApp());
 }
 
