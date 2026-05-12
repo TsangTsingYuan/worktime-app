@@ -1,0 +1,29 @@
+workflows:
+  ios-release:
+    name: iOS Release Build
+    environment:
+      vars:
+        API_URL: "http://localhost:8080"
+      flutter: stable
+      xcode: latest
+    cache:
+      cache_paths:
+        - ~/.pub-cache
+    scripts:
+      - name: Flutter pub get
+        script: flutter pub get
+      - name: Flutter analyze
+        script: flutter analyze
+      - name: Build iOS release
+        script: |
+          # Codemagic auto-manages code signing via Apple Developer connection
+          # Configure in: Codemagic UI → Apple Developer Portal
+          flutter build ios --release \
+            --dart-define=API_URL=$API_URL
+    artifacts:
+      - build/ios/iphoneos/*.app
+      - build/ios/archive/*.xcarchive
+    publishing:
+      email:
+        recipients:
+          - your@email.com
