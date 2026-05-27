@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/timer_provider.dart';
 import '../providers/work_log_provider.dart';
+import '../services/database_helper.dart';
 import '../services/sync_service.dart';
 import '../widgets/task_card.dart';
 import '../widgets/timer_widget.dart';
@@ -37,11 +39,206 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<List<String>> _loadCategories() async {
+    try {
+      final user = context.read<AuthProvider>().user;
+      if (user == null) return ['开发', '会议', '学习', '沟通', '文档', '其他'];
+      final db = DatabaseHelper();
+      final cats = await db.getAllCategories(user.id!);
+      if (cats.isEmpty) return ['开发', '会议', '学习', '沟通', '文档', '其他'];
+      return cats;
+    } catch (_) {
+      return ['开发', '会议', '学习', '沟通', '文档', '其他'];
+    }
+  }
+
+  Widget _buildCategorySection({
+    required TextEditingController controller,
+    required List<String> allCategories,
+    required int userId,
+    VoidCallback? onChanged,
+    ValueChanged<String>? onHideCategory,
+    VoidCallback? onManageCategories,
+  }) {
+    // 实时将用户输入的新分类添加到 chips 中
+    final typed = controller.text.trim();
+    final displayCats = <String>[...allCategories];
+    if (typed.isNotEmpty && !displayCats.contains(typed)) {
+      displayCats.add(typed);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: '分类',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.category_outlined, size: 20),
+          ),
+          onChanged: (_) => onChanged?.call(),
+        ),
+        if (displayCats.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: displayCats.map((c) => GestureDetector(
+              onLongPress: onHideCategory != null
+                  ? () => _showCategoryMenu(c, onHideCategory)
+                  : null,
+              child: ChoiceChip(
+                label: Text(c, style: const TextStyle(fontSize: 12)),
+                selected: controller.text == c,
+                selectedColor: Colors.blue.shade100,
+                visualDensity: VisualDensity.compact,
+                onSelected: (_) {
+                  controller.text = c;
+                  onChanged?.call();
+                },
+              ),
+            )).toList(),
+          ),
+        ],
+        if (allCategories.length > 3) ...[
+          const SizedBox(height: 4),
+          GestureDetector(
+            onTap: () async {
+              await _showManageCategoriesDialog(userId);
+              onManageCategories?.call();
+            },
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text('管理分类', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  void _showCategoryMenu(String category, ValueChanged<String> onHide) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('管理分类'),
+        content: Text('对分类「$category」的操作：'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              onHide(category);
+            },
+            child: const Text('从建议中隐藏', style: TextStyle(color: Colors.red)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showManageCategoriesDialog(int userId) async {
+    final db = DatabaseHelper();
+    // Get ALL categories (work_log + todo), unfiltered
+    final worklogCats = await (await db.database).rawQuery(
+      'SELECT DISTINCT category FROM work_log WHERE userId = ? AND category != "" ORDER BY category',
+      [userId],
+    );
+    final todoCats = await (await db.database).rawQuery(
+      'SELECT DISTINCT category FROM todo WHERE userId = ? AND category != "" ORDER BY category',
+      [userId],
+    );
+    final allCats = <String>{};
+    for (final row in worklogCats) {
+      final c = row['category'] as String?;
+      if (c != null && c.isNotEmpty) allCats.add(c);
+    }
+    for (final row in todoCats) {
+      final c = row['category'] as String?;
+      if (c != null && c.isNotEmpty) allCats.add(c);
+    }
+    final sortedCats = allCats.toList()..sort();
+    // Get hidden set
+    final hiddenStr = await db.getPref('hidden_categories_$userId');
+    final hiddenSet = <String>{};
+    if (hiddenStr != null && hiddenStr.isNotEmpty) {
+      try {
+        hiddenSet.addAll((jsonDecode(hiddenStr) as List).cast<String>());
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    final sortedList = [...sortedCats]; // keep as local var for setState rebuild
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setSt) {
+          // Determine current hidden state for each category
+          return AlertDialog(
+            title: const Row(children: [
+              Icon(Icons.category_outlined),
+              SizedBox(width: 8),
+              Text('管理分类'),
+            ]),
+            content: SizedBox(
+              width: 300,
+              child: sortedList.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('暂无分类数据', style: TextStyle(color: Colors.grey)),
+                    )
+                  : ListBody(
+                      children: sortedList.map((c) {
+                        final isHidden = hiddenSet.contains(c);
+                        return ListTile(
+                          dense: true,
+                          title: Text(c),
+                          trailing: IconButton(
+                            icon: Icon(
+                              isHidden ? Icons.visibility_off : Icons.visibility,
+                              color: isHidden ? Colors.grey : Colors.blue,
+                            ),
+                            onPressed: () async {
+                              if (isHidden) {
+                                await db.unhideCategory(userId, c);
+                                hiddenSet.remove(c);
+                              } else {
+                                await db.hideCategory(userId, c);
+                                hiddenSet.add(c);
+                              }
+                              setSt(() {});
+                            },
+                          ),
+                        );
+                      }).toList(),
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx2),
+                child: const Text('完成'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _startNewTask() async {
+    final user = context.read<AuthProvider>().user;
+    if (user == null) return;
+    final userId = user.id!;
     final titleCtrl = TextEditingController();
     final notesCtrl = TextEditingController();
-    String category = '开发';
+    final categoryCtrl = TextEditingController(text: '开发');
+    var allCategories = await _loadCategories();
 
+    if (!mounted) return;
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -64,21 +261,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  initialValue: category,
-                  decoration: const InputDecoration(
-                    labelText: '分类',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: '开发', child: Row(children: [Icon(Icons.code, size: 18), SizedBox(width: 8), Text('开发')])),
-                    DropdownMenuItem(value: '会议', child: Row(children: [Icon(Icons.groups, size: 18), SizedBox(width: 8), Text('会议')])),
-                    DropdownMenuItem(value: '学习', child: Row(children: [Icon(Icons.school, size: 18), SizedBox(width: 8), Text('学习')])),
-                    DropdownMenuItem(value: '沟通', child: Row(children: [Icon(Icons.forum, size: 18), SizedBox(width: 8), Text('沟通')])),
-                    DropdownMenuItem(value: '文档', child: Row(children: [Icon(Icons.description, size: 18), SizedBox(width: 8), Text('文档')])),
-                    DropdownMenuItem(value: '其他', child: Row(children: [Icon(Icons.more_horiz, size: 18), SizedBox(width: 8), Text('其他')])),
-                  ],
-                  onChanged: (v) => setDState(() => category = v!),
+                _buildCategorySection(
+                  controller: categoryCtrl,
+                  allCategories: allCategories,
+                  userId: userId,
+                  onChanged: () => setDState(() {}),
+                  onHideCategory: (cat) async {
+                    final db = DatabaseHelper();
+                    await db.hideCategory(userId, cat);
+                    final newCats = await _loadCategories();
+                    if (mounted) setDState(() => allCategories = newCats);
+                  },
+                  onManageCategories: () async {
+                    final newCats = await _loadCategories();
+                    if (mounted) setDState(() => allCategories = newCats);
+                  },
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -116,11 +313,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (result == true && titleCtrl.text.trim().isNotEmpty) {
       if (!mounted) return;
-      final user = context.read<AuthProvider>().user;
-      if (user == null) return;
+      final category = categoryCtrl.text.trim().isNotEmpty
+          ? categoryCtrl.text.trim()
+          : '其他';
       final id = await context
           .read<WorkLogProvider>()
-          .startNewTask(user.id!, titleCtrl.text.trim(), category,
+          .startNewTask(userId, titleCtrl.text.trim(), category,
               notes: notesCtrl.text.trim());
       if (mounted) {
         context.read<TimerProvider>().start(
@@ -169,9 +367,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _addManualLog() async {
+    final user = context.read<AuthProvider>().user;
+    if (user == null) return;
+    final userId = user.id!;
     final titleCtrl = TextEditingController();
     final notesCtrl = TextEditingController();
-    String category = '开发';
+    final categoryCtrl = TextEditingController(text: '开发');
+    var allCategories = await _loadCategories();
     final now = DateTime.now();
     DateTime startDate = now;
     TimeOfDay startTime = TimeOfDay.now();
@@ -180,6 +382,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final endHour = now.add(const Duration(hours: 1));
     TimeOfDay endTime = TimeOfDay.fromDateTime(endHour);
 
+    if (!mounted) return;
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -202,21 +405,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  initialValue: category,
-                  decoration: const InputDecoration(
-                    labelText: '分类',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: '开发', child: Row(children: [Icon(Icons.code, size: 18), SizedBox(width: 8), Text('开发')])),
-                    DropdownMenuItem(value: '会议', child: Row(children: [Icon(Icons.groups, size: 18), SizedBox(width: 8), Text('会议')])),
-                    DropdownMenuItem(value: '学习', child: Row(children: [Icon(Icons.school, size: 18), SizedBox(width: 8), Text('学习')])),
-                    DropdownMenuItem(value: '沟通', child: Row(children: [Icon(Icons.forum, size: 18), SizedBox(width: 8), Text('沟通')])),
-                    DropdownMenuItem(value: '文档', child: Row(children: [Icon(Icons.description, size: 18), SizedBox(width: 8), Text('文档')])),
-                    DropdownMenuItem(value: '其他', child: Row(children: [Icon(Icons.more_horiz, size: 18), SizedBox(width: 8), Text('其他')])),
-                  ],
-                  onChanged: (v) => setDState(() => category = v!),
+                _buildCategorySection(
+                  controller: categoryCtrl,
+                  allCategories: allCategories,
+                  userId: userId,
+                  onChanged: () => setDState(() {}),
+                  onHideCategory: (cat) async {
+                    final db = DatabaseHelper();
+                    await db.hideCategory(userId, cat);
+                    final newCats = await _loadCategories();
+                    if (mounted) setDState(() => allCategories = newCats);
+                  },
+                  onManageCategories: () async {
+                    final newCats = await _loadCategories();
+                    if (mounted) setDState(() => allCategories = newCats);
+                  },
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -331,8 +534,11 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         return;
       }
+      final category = categoryCtrl.text.trim().isNotEmpty
+          ? categoryCtrl.text.trim()
+          : '其他';
       await context.read<WorkLogProvider>().addManualLog(
-            user.id!,
+            userId,
             titleCtrl.text.trim(),
             category,
             sMs,
@@ -349,7 +555,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('工作打卡'),
+        title: const Text('Time Flies'),
         centerTitle: false,
         actions: [
           Consumer<SyncService>(
@@ -449,6 +655,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildWideLayout(List logs) {
+    final activeTimers = context.watch<TimerProvider>().activeTimers;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -456,12 +663,19 @@ class _HomeScreenState extends State<HomeScreen> {
           flex: 3,
           child: Column(
             children: [
-              ...context.watch<TimerProvider>().activeTimers.map(
-                    (t) => TimerWidget(
-                      workLogId: t.workLogId,
-                      onStop: _stopTask,
+              if (activeTimers.isNotEmpty)
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 220),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: activeTimers.map((t) => TimerWidget(
+                        workLogId: t.workLogId,
+                        onStop: _stopTask,
+                      )).toList(),
                     ),
                   ),
+                ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(

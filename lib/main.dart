@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'services/database_stub_init.dart'
@@ -31,6 +32,8 @@ final _syncService = SyncService(_apiClient, _db);
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   configureDatabase();
+  // 预初始化数据库，减少首次启动时的等待
+  unawaited(_db.database);
   runApp(const WorktimeApp());
 }
 
@@ -50,7 +53,7 @@ class WorktimeApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: _syncService),
       ],
       child: MaterialApp(
-        title: '工作打卡',
+        title: 'Time Flies',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorSchemeSeed: Colors.blue,
@@ -77,6 +80,7 @@ class _AppShellState extends State<AppShell> {
   late final WorkLogProvider _workLog;
   late final ReminderService _reminderService;
   late final SyncService _syncService;
+  bool _autoLoginChecking = true;
 
   @override
   void initState() {
@@ -89,18 +93,24 @@ class _AppShellState extends State<AppShell> {
 
     _reminderService.initializeVisibilityListener();
 
-    if (_auth.user != null) {
-      _settings.loadFromJson(_auth.user!.config);
-    }
-
-    if (_auth.isLoggedIn) {
-      _reminderService.start(_settings, _workLog, _auth);
-      _triggerSync();
-    }
+    _tryAutoLogin();
 
     _auth.addListener(_onAuthChanged);
     _settings.addListener(_onSettingsChanged);
     _reminderService.addListener(_onPendingMessage);
+  }
+
+  Future<void> _tryAutoLogin() async {
+    final loggedIn = await _auth.autoLogin();
+    if (!mounted) return;
+    setState(() => _autoLoginChecking = false);
+    if (loggedIn) {
+      if (_auth.user != null) {
+        _settings.loadFromJson(_auth.user!.config);
+      }
+      _reminderService.start(_settings, _workLog, _auth);
+      _triggerSync();
+    }
   }
 
   @override
@@ -135,8 +145,22 @@ class _AppShellState extends State<AppShell> {
   void _onPendingMessage() {
     final msg = _reminderService.pendingMessage;
     if (msg != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), duration: const Duration(seconds: 5)),
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(children: [
+            Icon(Icons.notifications_active, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('提醒'),
+          ]),
+          content: Text(msg),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
       );
       _reminderService.clearPendingMessage();
     }
@@ -179,6 +203,21 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    if (_autoLoginChecking) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('正在验证登录状态...'),
+            ],
+          ),
+        ),
+      );
+    }
+
     final isLoggedIn = context.watch<AuthProvider>().isLoggedIn;
     if (!isLoggedIn) return const LoginScreen();
 

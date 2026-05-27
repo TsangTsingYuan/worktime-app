@@ -43,7 +43,7 @@ class TimerProvider extends ChangeNotifier {
       workLogId: workLogId,
       taskTitle: title,
       taskCategory: category,
-      elapsedSeconds: initialSeconds,
+      initialElapsed: initialSeconds,
       status: TimerStatus.running,
     );
     _timers[workLogId]!._startTicking(notifyListeners);
@@ -83,7 +83,7 @@ class TimerProvider extends ChangeNotifier {
       workLogId: id,
       taskTitle: task.title,
       taskCategory: task.category,
-      elapsedSeconds: elapsed >= 0 ? elapsed : 0,
+      initialElapsed: elapsed >= 0 ? elapsed : 0,
       status: TimerStatus.running,
     );
     _timers[id]!._startTicking(notifyListeners);
@@ -112,7 +112,8 @@ class _TimerStateData {
   final int workLogId;
   final String taskTitle;
   final String taskCategory;
-  int elapsedSeconds;
+  int initialElapsed;
+  final int startTimestamp; // milliseconds since epoch
   TimerStatus status;
   Timer? _timer;
 
@@ -120,14 +121,20 @@ class _TimerStateData {
     required this.workLogId,
     required this.taskTitle,
     this.taskCategory = '',
-    this.elapsedSeconds = 0,
+    this.initialElapsed = 0,
     this.status = TimerStatus.running,
-  });
+  }) : startTimestamp = DateTime.now().millisecondsSinceEpoch;
+
+  int get elapsedSeconds {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return initialElapsed + ((now - startTimestamp) ~/ 1000);
+  }
 
   void _startTicking(VoidCallback notify) {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      elapsedSeconds++;
+      // elapsedSeconds is computed from startTimestamp, so it's always correct
+      // even if the browser throttles the periodic timer.
       notify();
     });
   }

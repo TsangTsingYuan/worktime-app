@@ -12,12 +12,14 @@ class DatabaseHelper {
   DatabaseHelper._internal();
 
   static Database? _database;
+  static Future<Database>? _dbInitFuture;
   static const _dbName = 'worktime.db';
-  static const _dbVersion = 3;
+  static const _dbVersion = 4;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDatabase();
+    _dbInitFuture ??= _initDatabase();
+    _database = await _dbInitFuture;
     return _database!;
   }
 
@@ -62,6 +64,16 @@ class DatabaseHelper {
       )
     ''');
     await _createTodoTable(db);
+    await _createPrefsTable(db);
+  }
+
+  Future<void> _createPrefsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS app_prefs (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    ''');
   }
 
   Future<void> _createTodoTable(Database db) async {
@@ -99,6 +111,9 @@ class DatabaseHelper {
     if (oldVersion < 3) {
       await _createTodoTable(db);
     }
+    if (oldVersion < 4) {
+      await _createPrefsTable(db);
+    }
   }
 
   // ====================== Password Hashing ======================
@@ -113,22 +128,21 @@ class DatabaseHelper {
 
   Future<User?> login(String phone, String password) async {
     final hashed = _hashPassword(password);
+    return _loginByHash(phone, hashed);
+  }
+
+  /// Login with already-hashed password (for auto-login)
+  Future<User?> loginByHash(String phone, String passwordHash) async {
+    return _loginByHash(phone, passwordHash);
+  }
+
+  Future<User?> _loginByHash(String phone, String hashedPassword) async {
     try {
       final db = await database;
-      // Try hashed password first
-      var maps = await db.query('user',
-          where: 'phone = ? AND password = ?', whereArgs: [phone, hashed]);
-      if (maps.isNotEmpty) return User.fromMap(maps.first);
-      // Fallback: check legacy plaintext password and upgrade
-      maps = await db.query('user',
-          where: 'phone = ? AND password = ?', whereArgs: [phone, password]);
-      if (maps.isNotEmpty) {
-        // Upgrade to hashed password
-        await db.update('user', {'password': hashed},
-            where: 'id = ?', whereArgs: [maps.first['id']]);
-        return User.fromMap(maps.first);
-      }
-      return null;
+      final maps = await db.query('user',
+          where: 'phone = ? AND password = ?', whereArgs: [phone, hashedPassword]);
+      if (maps.isEmpty) return null;
+      return User.fromMap(maps.first);
     } catch (_) {
       return null;
     }
@@ -283,7 +297,7 @@ class DatabaseHelper {
       args.add(categoryFilter);
     }
     if (startDay != null && endDay != null) {
-      conditions.add('dueDate >= ? AND dueDate <= ?');
+      conditions.add('(dueDate IS NULL OR (dueDate >= ? AND dueDate <= ?))');
       args.addAll([startDay, endDay]);
     }
     if (searchQuery != null && searchQuery.isNotEmpty) {
@@ -363,6 +377,140 @@ class DatabaseHelper {
     await db.delete('todo');
     await db.delete('work_log');
     await db.delete('user');
+  }
+
+  // ====================== App Preferences (key-value) ======================
+
+  Future<void> savePref(String key, String value) async {
+    final db = await database;
+    await db.insert('app_prefs', {'key': key, 'value': value},
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<String?> getPref(String key) async {
+    final db = await database;
+    final maps = await db.query('app_prefs',
+        where: 'key = ?', whereArgs: [key]);
+    if (maps.isEmpty) return null;
+    return maps.first['value'] as String;
+  }
+
+  Future<void> deletePref(String key) async {
+    final db = await database;
+    await db.delete('app_prefs', where: 'key = ?', whereArgs: [key]);
+  }
+
+  Future<void> clearAllPrefs() async {
+    final db = await database;
+    await db.delete('app_prefs');
+  }
+
+  // ====================== Categories ======================
+
+  /// Get all distinct categories from work_log and todo tables
+  Future<List<String>> getAllCategories(int userId) async {
+    final db = await database;
+    final worklogCats = await db.rawQuery(
+        'SELECT DISTINCT category FROM work_log WHERE userId = ? AND category != "" ORDER BY category',
+        [userId]);
+    final todoCats = await db.rawQuery(
+        'SELECT DISTINCT category FROM todo WHERE userId = ? AND category != "" ORDER BY category',
+        [userId]);
+    final set = <String>{};
+    for (final row in worklogCats) {
+      final c = row['category'] as String?;
+      if (c != null && c.isNotEmpty) set.add(c);
+    }
+    for (final row in todoCats) {
+      final c = row['category'] as String?;
+      if (c != null && c.isNotEmpty) set.add(c);
+    }
+    final sorted = set.toList()..sort();
+    // Filter out hidden categories
+    final hidden = await _getHiddenCategories(userId);
+    if (hidden.isNotEmpty) {
+      sorted.removeWhere((c) => hidden.contains(c));
+    }
+    return sorted;
+  }
+
+  /// Hidden categories stored in app_prefs as JSON array
+  Future<Set<String>> _getHiddenCategories(int userId) async {
+    final key = 'hidden_categories_$userId';
+    final val = await getPref(key);
+    if (val == null || val.isEmpty) return {};
+    try {
+      final list = (jsonDecode(val) as List).cast<String>();
+      return list.toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> hideCategory(int userId, String category) async {
+    final key = 'hidden_categories_$userId';
+    final current = await _getHiddenCategories(userId);
+    current.add(category);
+    await savePref(key, jsonEncode(current.toList()));
+  }
+
+  Future<void> unhideCategory(int userId, String category) async {
+    final key = 'hidden_categories_$userId';
+    final current = await _getHiddenCategories(userId);
+    current.remove(category);
+    await savePref(key, jsonEncode(current.toList()));
+  }
+
+  Future<Set<String>> getVisibleCategories(int userId, List<String> allCategories) async {
+    final hidden = await _getHiddenCategories(userId);
+    return allCategories.where((c) => !hidden.contains(c)).toSet();
+  }
+
+  // ─── Credential helpers for "记住密码" / "自动登录" ───
+
+  static const _prefKeyPhone = 'remembered_phone';
+  static const _prefKeyPasswordHash = 'remembered_password_hash';
+  static const _prefKeyAutoLogin = 'auto_login_enabled';
+  static const _prefKeyRememberPwd = 'remember_password_plain';
+
+  Future<void> saveCredentials(String phone, String passwordHash, {bool autoLogin = false}) async {
+    await savePref(_prefKeyPhone, phone);
+    await savePref(_prefKeyPasswordHash, passwordHash);
+    await savePref(_prefKeyAutoLogin, autoLogin ? '1' : '0');
+  }
+
+  /// Save the ORIGINAL (plaintext) password for "记住密码" pre-fill on login screen
+  Future<void> saveRememberPassword(String password) async {
+    await savePref(_prefKeyRememberPwd, password);
+  }
+
+  /// Retrieve the saved plaintext password for login screen pre-fill
+  Future<String?> getRememberPassword() async {
+    return getPref(_prefKeyRememberPwd);
+  }
+
+  Future<Map<String, String?>> getSavedCredentials() async {
+    final phone = await getPref(_prefKeyPhone);
+    final passwordHash = await getPref(_prefKeyPasswordHash);
+    final autoLogin = await getPref(_prefKeyAutoLogin);
+    if (phone == null || passwordHash == null) return {};
+    return {
+      'phone': phone,
+      'passwordHash': passwordHash,
+      'autoLogin': autoLogin,
+    };
+  }
+
+  Future<bool> isAutoLoginEnabled() async {
+    final val = await getPref(_prefKeyAutoLogin);
+    return val == '1';
+  }
+
+  Future<void> clearCredentials() async {
+    await deletePref(_prefKeyPhone);
+    await deletePref(_prefKeyPasswordHash);
+    await deletePref(_prefKeyAutoLogin);
+    await deletePref(_prefKeyRememberPwd);
   }
 
   /// Get the latest updatedAt timestamp across work_log and todo tables

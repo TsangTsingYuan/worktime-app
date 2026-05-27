@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/database_helper.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,6 +17,31 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLogin = true;
   bool _loading = false;
   String? _error;
+  bool _rememberMe = false;
+  bool _autoLogin = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
+    final db = DatabaseHelper();
+    final phone = await db.getPref('remembered_phone');
+    final pwd = await db.getRememberPassword();
+    if (phone != null) {
+      _phoneCtrl.text = phone;
+      _rememberMe = true;
+      if (pwd != null) {
+        _passwordCtrl.text = pwd;
+      }
+      // Also check auto-login preference
+      final autoLogin = await db.isAutoLoginEnabled();
+      if (autoLogin) _autoLogin = true;
+      if (mounted) setState(() {});
+    }
+  }
 
   @override
   void dispose() {
@@ -48,7 +74,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final auth = context.read<AuthProvider>();
       ok = _isLogin
-          ? await auth.login(phone, password)
+          ? await auth.login(phone, password, rememberMe: _rememberMe, autoLogin: _autoLogin)
           : await auth.register(phone, password, nickname);
     } catch (_) {
       if (!mounted) return;
@@ -132,6 +158,51 @@ class _LoginScreenState extends State<LoginScreen> {
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.person_outline),
                     ),
+                  ),
+                ],
+                if (_isLogin) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      SizedBox(
+                        height: 32,
+                        child: Checkbox(
+                          value: _rememberMe,
+                          onChanged: (v) => setState(() {
+                            _rememberMe = v ?? false;
+                            if (!_rememberMe) _autoLogin = false;
+                          }),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => setState(() {
+                          _rememberMe = !_rememberMe;
+                          if (!_rememberMe) _autoLogin = false;
+                        }),
+                        child: const Text('记住密码', style: TextStyle(fontSize: 14)),
+                      ),
+                      const SizedBox(width: 24),
+                      SizedBox(
+                        height: 32,
+                        child: Checkbox(
+                          value: _autoLogin,
+                          onChanged: _rememberMe
+                              ? (v) => setState(() => _autoLogin = v ?? false)
+                              : null,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: _rememberMe
+                            ? () => setState(() => _autoLogin = !_autoLogin)
+                            : null,
+                        child: Text('自动登录',
+                            style: TextStyle(
+                                fontSize: 14,
+                                color: _rememberMe ? null : Colors.grey)),
+                      ),
+                    ],
                   ),
                 ],
                 const SizedBox(height: 24),

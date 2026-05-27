@@ -20,8 +20,8 @@ class TodoEditDialog extends StatefulWidget {
 class _TodoEditDialogState extends State<TodoEditDialog> {
   late TextEditingController _titleCtrl;
   late TextEditingController _descCtrl;
+  late TextEditingController _categoryCtrl;
   late int _priority;
-  late String _category;
   late String _recurringRule;
   bool _hasDueDate = false;
   DateTime? _dueDate;
@@ -32,8 +32,8 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
     final t = widget.existing;
     _titleCtrl = TextEditingController(text: t?.title ?? '');
     _descCtrl = TextEditingController(text: t?.description ?? '');
+    _categoryCtrl = TextEditingController(text: t?.category ?? '');
     _priority = t?.priority ?? 1;
-    _category = t?.category ?? '';
     _recurringRule = t?.recurringRule ?? '';
     if (t?.dueDate != null) {
       _hasDueDate = true;
@@ -45,6 +45,7 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
   void dispose() {
     _titleCtrl.dispose();
     _descCtrl.dispose();
+    _categoryCtrl.dispose();
     super.dispose();
   }
 
@@ -55,7 +56,10 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
       title: Row(children: [
         Icon(isEditing ? Icons.edit : Icons.add_task),
         const SizedBox(width: 8),
-        Text(isEditing ? '编辑待办' : '新增待办'),
+        Flexible(
+          child: Text(isEditing ? '编辑待办' : '新增待办',
+              overflow: TextOverflow.ellipsis),
+        ),
       ]),
       content: SingleChildScrollView(
         child: Column(
@@ -67,6 +71,8 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
               decoration: const InputDecoration(
                 labelText: '标题',
                 border: OutlineInputBorder(),
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               ),
             ),
             const SizedBox(height: 12),
@@ -76,39 +82,60 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
               decoration: const InputDecoration(
                 labelText: '描述（可选）',
                 border: OutlineInputBorder(),
+                isDense: true,
               ),
             ),
             const SizedBox(height: 12),
 
             // Priority
-            Row(
-              children: [
-                const Text('优先级：', style: TextStyle(fontSize: 14)),
-                const SizedBox(width: 8),
-                _priorityChip(0, '低', Colors.green),
-                const SizedBox(width: 4),
-                _priorityChip(1, '中', Colors.orange),
-                const SizedBox(width: 4),
-                _priorityChip(2, '高', Colors.red),
-              ],
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  const Text('优先级：', style: TextStyle(fontSize: 14)),
+                  const SizedBox(width: 8),
+                  _priorityChip(0, '低', Colors.green),
+                  const SizedBox(width: 4),
+                  _priorityChip(1, '中', Colors.orange),
+                  const SizedBox(width: 4),
+                  _priorityChip(2, '高', Colors.red),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
 
             // Category
-            DropdownButtonFormField<String>(
-              initialValue: _category.isEmpty ? null : _category,
+            TextField(
+              controller: _categoryCtrl,
               decoration: const InputDecoration(
                 labelText: '分类',
                 border: OutlineInputBorder(),
                 isDense: true,
+                prefixIcon: Icon(Icons.category_outlined, size: 20),
               ),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('无')),
-                ...widget.categories.map((c) =>
-                    DropdownMenuItem(value: c, child: Text(c))),
-              ],
-              onChanged: (v) => setState(() => _category = v ?? ''),
+              onChanged: (_) => setState(() {}),
             ),
+            if (widget.categories.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: () {
+                  final typed = _categoryCtrl.text.trim();
+                  final displayCats = <String>[...widget.categories];
+                  if (typed.isNotEmpty && !displayCats.contains(typed)) {
+                    displayCats.add(typed);
+                  }
+                  return displayCats.map((c) => ChoiceChip(
+                    label: Text(c, style: const TextStyle(fontSize: 12)),
+                    selected: _categoryCtrl.text == c,
+                    selectedColor: Colors.blue.shade100,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => setState(() => _categoryCtrl.text = c),
+                  )).toList();
+                }(),
+              ),
+            ],
             const SizedBox(height: 12),
 
             // Due date
@@ -210,7 +237,7 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
       title: title,
       description: _descCtrl.text.trim(),
       priority: _priority,
-      category: _category,
+      category: _categoryCtrl.text.trim(),
       dueDate: _hasDueDate ? _dueDate?.millisecondsSinceEpoch : null,
       recurringRule: _recurringRule,
       status: widget.existing?.status ?? 0,

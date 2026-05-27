@@ -151,7 +151,7 @@ class ReminderService extends ChangeNotifier {
 
     if (!hasLogs) {
       _lastOffWorkRemindDate = now;
-      _notify('已过下班时间，今天还没有工作打卡记录！');
+      _notify('已过下班时间，今天还没有打卡记录！');
     }
   }
 

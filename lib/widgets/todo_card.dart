@@ -34,6 +34,8 @@ class TodoCard extends StatelessWidget {
   final VoidCallback? onToggleSubtasks;
   final List<TodoItem>? subtasks;
   final bool subtasksExpanded;
+  final VoidCallback? onSelect;
+  final bool isSelected;
 
   const TodoCard({
     super.key,
@@ -45,6 +47,8 @@ class TodoCard extends StatelessWidget {
     this.onToggleSubtasks,
     this.subtasks,
     this.subtasksExpanded = false,
+    this.onSelect,
+    this.isSelected = false,
   });
 
   @override
@@ -54,6 +58,13 @@ class TodoCard extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+      shape: isSelected
+          ? RoundedRectangleBorder(
+              side: BorderSide(color: Colors.blue.shade300, width: 1.5),
+              borderRadius: BorderRadius.circular(12),
+            )
+          : null,
+      color: isSelected ? Colors.blue.shade50 : null,
       child: Column(
         children: [
           ListTile(
@@ -83,47 +94,53 @@ class TodoCard extends StatelessWidget {
             ),
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Row(
-                children: [
-                  if (todo.category.isNotEmpty) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(4),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    if (todo.category.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(todo.category,
+                            style: TextStyle(fontSize: 11, color: Colors.blue.shade700)),
                       ),
-                      child: Text(todo.category,
-                          style: TextStyle(fontSize: 11, color: Colors.blue.shade700)),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  if (todo.dueDate != null) ...[
-                    Icon(Icons.access_time, size: 12, color: overdue ? Colors.red : Colors.grey),
-                    const SizedBox(width: 2),
-                    Text(
-                      _formatDate(todo.dueDate!),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: overdue ? Colors.red : Colors.grey.shade600,
-                        fontWeight: overdue ? FontWeight.bold : null,
+                      const SizedBox(width: 8),
+                    ],
+                    if (todo.dueDate != null) ...[
+                      Icon(Icons.access_time, size: 12, color: overdue ? Colors.red : Colors.grey),
+                      const SizedBox(width: 2),
+                      Text(
+                        _formatDate(todo.dueDate!),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: overdue ? Colors.red : Colors.grey.shade600,
+                          fontWeight: overdue ? FontWeight.bold : null,
+                        ),
                       ),
-                    ),
-                    if (overdue)
-                      Text(' 已过期',
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold)),
+                      if (overdue)
+                        Text(' 已过期',
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold)),
+                    ],
+                    if (todo.recurringRule.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Icon(Icons.repeat, size: 12, color: Colors.blue.shade300),
+                      Text(_recurringLabel(todo.recurringRule),
+                          style: TextStyle(fontSize: 11, color: Colors.blue.shade300)),
+                    ],
+                    if (todo.description.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 0),
+                        child: Icon(Icons.description_outlined, size: 14, color: Colors.grey.shade400),
+                      ),
+                    ],
                   ],
-                  if (todo.recurringRule.isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    Icon(Icons.repeat, size: 12, color: Colors.blue.shade300),
-                    Text(_recurringLabel(todo.recurringRule),
-                        style: TextStyle(fontSize: 11, color: Colors.blue.shade300)),
-                  ],
-                  if (todo.description.isNotEmpty) ...[
-                    const Spacer(),
-                    Icon(Icons.description_outlined, size: 14, color: Colors.grey.shade400),
-                  ],
-                ],
+                ),
               ),
             ),
             trailing: Row(
@@ -152,7 +169,11 @@ class TodoCard extends StatelessWidget {
                 ),
               ],
             ),
-            onTap: overdue ? null : onEdit,
+            onTap: () {
+              if (overdue) return;
+              onSelect?.call();
+              onEdit?.call();
+            },
           ),
 
           // Subtasks
