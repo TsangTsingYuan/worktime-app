@@ -5,20 +5,16 @@ import '../services/database_helper.dart';
 class TodoProvider extends ChangeNotifier {
   final DatabaseHelper _db = DatabaseHelper();
   List<TodoItem> _todos = [];
-  Map<int, List<TodoItem>> _subtaskCache = {};
+  final Map<int, List<TodoItem>> _subtaskCache = {};
   bool _loading = false;
-  int _selectedYear = 0;
-  int _selectedMonth = 0;
 
   List<TodoItem> get todos => _todos;
   bool get loading => _loading;
 
   // ─── Calendar month tracking ───
 
-  int get selectedYear => _selectedYear;
-  int get selectedMonth => _selectedMonth;
-  set selectedMonth(int m) => _selectedMonth = m;
-  set selectedYear(int y) => _selectedYear = y;
+  int selectedYear = 0;
+  int selectedMonth = 0;
 
   // ─── Load todos for a date range ───
 
@@ -182,5 +178,88 @@ class TodoProvider extends ChangeNotifier {
       }
     }
     return result;
+  }
+
+  // ─── 开始执行 ───
+
+  /// 标记待办为"进行中"，返回其信息供计时使用
+  Future<TodoItem> startExecution(TodoItem todo) async {
+    final updated = todo.copyWith(status: 1);
+    await _db.updateTodo(updated);
+    final idx = _todos.indexWhere((t) => t.id == todo.id);
+    if (idx >= 0) _todos[idx] = updated;
+    notifyListeners();
+    return updated;
+  }
+
+  /// 结束计时时回调：标记待办为完成
+  Future<void> completeOnTimerEnd(TodoItem todo, int workLogId) async {
+    final updated = todo.copyWith(
+      status: 2,
+      linkedWorkLogId: workLogId,
+    );
+    await _db.updateTodo(updated);
+    final idx = _todos.indexWhere((t) => t.id == todo.id);
+    if (idx >= 0) _todos[idx] = updated;
+
+    // Handle recurring
+    if (todo.recurringRule.isNotEmpty) {
+      _generateRecurring(todo);
+    }
+
+    notifyListeners();
+  }
+
+  // ─── 提醒检测 ───
+
+  /// 检测即将开始的待办（开始时间前N分钟）
+  /// 返回需要提醒的待办列表
+  List<TodoItem> checkStartReminders() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final result = <TodoItem>[];
+    for (final todo in _todos) {
+      if (todo.status != 0) continue; // 只提醒待办状态
+      if (todo.startTime == null || todo.reminderBeforeStart <= 0) continue;
+      final remindAt = todo.startTime! - todo.reminderBeforeStart * 60 * 1000;
+      if (now >= remindAt && now < todo.startTime!) {
+        result.add(todo);
+      }
+    }
+    return result;
+  }
+
+  /// 检测即将截止的待办（截止时间前N分钟）
+  List<TodoItem> checkEndReminders() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final result = <TodoItem>[];
+    for (final todo in _todos) {
+      if (todo.status != 0) continue;
+      if (todo.dueDate == null || todo.reminderBeforeEnd <= 0) continue;
+      final remindAt = todo.dueDate! - todo.reminderBeforeEnd * 60 * 1000;
+      if (now >= remindAt && now < todo.dueDate!) {
+        result.add(todo);
+      }
+    }
+    return result;
+  }
+
+  /// 检测已过期待办，仅对未通知过的弹出一次提示
+  /// 返回需要通知的待办列表，并标记 notified
+  Future<List<TodoItem>> checkOverdueAndMark() async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final overdue = <TodoItem>[];
+    for (final todo in _todos) {
+      if (todo.status != 0) continue;
+      if (todo.dueDate == null || todo.dueDate! >= now) continue;
+      if (todo.overdueNotified) continue;
+      overdue.add(todo);
+      // 标记已通知
+      final marked = todo.copyWith(overdueNotified: true);
+      await _db.updateTodo(marked);
+      final idx = _todos.indexWhere((t) => t.id == todo.id);
+      if (idx >= 0) _todos[idx] = marked;
+    }
+    if (overdue.isNotEmpty) notifyListeners();
+    return overdue;
   }
 }

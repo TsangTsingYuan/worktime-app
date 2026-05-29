@@ -5,6 +5,8 @@ import 'package:web/web.dart' as web;
 import '../providers/auth_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/work_log_provider.dart';
+import '../providers/todo_provider.dart';
+import '../models/reminder_action.dart';
 import 'database_helper.dart';
 
 class ReminderService extends ChangeNotifier {
@@ -29,8 +31,11 @@ class ReminderService extends ChangeNotifier {
 
   // pending message for SnackBar
   String? _pendingMessage;
+  ReminderAction? _pendingAction;
+  TodoProvider? _todoProvider;
 
   String? get pendingMessage => _pendingMessage;
+  ReminderAction? get pendingAction => _pendingAction;
   bool get isTabVisible => _isTabVisible;
 
   // ---- visibility ----
@@ -46,10 +51,11 @@ class ReminderService extends ChangeNotifier {
 
   // ---- lifecycle ----
 
-  void start(SettingsProvider settings, WorkLogProvider workLogProvider, AuthProvider auth) {
+  void start(SettingsProvider settings, WorkLogProvider workLogProvider, AuthProvider auth, {TodoProvider? todoProvider}) {
     _settings = settings;
     _workLogProvider = workLogProvider;
     _auth = auth;
+    _todoProvider = todoProvider;
     _startSedentaryTimer();
     _startOffWorkTimer();
     _startTodoTimer();
@@ -77,6 +83,7 @@ class ReminderService extends ChangeNotifier {
 
   void clearPendingMessage() {
     _pendingMessage = null;
+    _pendingAction = null;
     notifyListeners();
   }
 
@@ -170,13 +177,64 @@ class ReminderService extends ChangeNotifier {
     final userId = _auth?.user?.id;
     if (userId == null) return;
 
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // 1. 过期待办单次通知（使用 overdueNotified 字段）
     DatabaseHelper().getOverdueTodos(userId).then((overdue) {
       for (final todo in overdue) {
-        if (todo.id != null && _notifiedTodoIds.add(todo.id!)) {
-          _notify('待办「${todo.title}」已过截止时间！');
+        if (todo.id != null && !todo.overdueNotified && _notifiedTodoIds.add(todo.id!)) {
+          _notifyAction(ReminderAction(
+            type: 'overdue',
+            todoId: todo.id!,
+            todoTitle: todo.title,
+            message: '待办「${todo.title}」已过截止时间！',
+          ));
+          // 标记已通知
+          DatabaseHelper().updateTodo(todo.copyWith(overdueNotified: true));
         }
       }
     });
+
+    // 2. 开始时间提醒、截止时间提醒（通过 TodoProvider）
+    final todoProvider = _todoProvider;
+    if (todoProvider == null) return;
+
+    // 开始时间前N分钟提醒
+    for (final todo in todoProvider.todos) {
+      if (todo.status == 2) continue;
+      if (todo.id != null && _notifiedTodoIds.contains(todo.id)) continue;
+
+      // 开始时间提醒（仅对未开始的待办，已开始执行的跳过）
+      if (todo.status == 0 && todo.startTime != null && todo.reminderBeforeStart > 0) {
+        final remindAt = todo.startTime! - todo.reminderBeforeStart * 60 * 1000;
+        if (now >= remindAt && now < todo.startTime! + 60000) { // 1分钟内只提醒一次
+          if (todo.id != null) _notifiedTodoIds.add(todo.id!);
+          _notifyAction(ReminderAction(
+            type: 'start',
+            todoId: todo.id!,
+            todoTitle: todo.title,
+            minutes: todo.reminderBeforeStart,
+            message: '待办「${todo.title}」即将开始！还有${todo.reminderBeforeStart}分钟',
+          ));
+          continue;
+        }
+      }
+
+      // 截止时间提醒
+      if (todo.dueDate != null && todo.reminderBeforeEnd > 0) {
+        final remindAt = todo.dueDate! - todo.reminderBeforeEnd * 60 * 1000;
+        if (now >= remindAt && now < todo.dueDate! + 60000) {
+          if (todo.id != null) _notifiedTodoIds.add(todo.id!);
+          _notifyAction(ReminderAction(
+            type: 'end',
+            todoId: todo.id!,
+            todoTitle: todo.title,
+            minutes: todo.reminderBeforeEnd,
+            message: '待办「${todo.title}」即将在${todo.reminderBeforeEnd}分钟后截止！',
+          ));
+        }
+      }
+    }
   }
 
   // ---- notification dispatch ----
@@ -184,9 +242,20 @@ class ReminderService extends ChangeNotifier {
   void _notify(String message) {
     if (_isTabVisible) {
       _pendingMessage = message;
+      _pendingAction = null;
       notifyListeners();
     } else {
       _showBrowserNotification(message);
+    }
+  }
+
+  void _notifyAction(ReminderAction action) {
+    if (_isTabVisible) {
+      _pendingMessage = action.message;
+      _pendingAction = action;
+      notifyListeners();
+    } else {
+      _showBrowserNotification(action.message);
     }
   }
 
