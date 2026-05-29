@@ -14,7 +14,7 @@ class DatabaseHelper {
   static Database? _database;
   static Future<Database>? _dbInitFuture;
   static const _dbName = 'worktime.db';
-  static const _dbVersion = 4;
+  static const _dbVersion = 5;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -86,6 +86,10 @@ class DatabaseHelper {
         priority INTEGER NOT NULL DEFAULT 1,
         status INTEGER NOT NULL DEFAULT 0,
         dueDate INTEGER,
+        startTime INTEGER,
+        reminderBeforeStart INTEGER NOT NULL DEFAULT 0,
+        reminderBeforeEnd INTEGER NOT NULL DEFAULT 0,
+        overdueNotified INTEGER NOT NULL DEFAULT 0,
         category TEXT NOT NULL DEFAULT '',
         linkedWorkLogId INTEGER,
         parentId INTEGER,
@@ -113,6 +117,12 @@ class DatabaseHelper {
     }
     if (oldVersion < 4) {
       await _createPrefsTable(db);
+    }
+    if (oldVersion < 5) {
+      await db.execute("ALTER TABLE todo ADD COLUMN startTime INTEGER");
+      await db.execute("ALTER TABLE todo ADD COLUMN reminderBeforeStart INTEGER NOT NULL DEFAULT 0");
+      await db.execute("ALTER TABLE todo ADD COLUMN reminderBeforeEnd INTEGER NOT NULL DEFAULT 0");
+      await db.execute("ALTER TABLE todo ADD COLUMN overdueNotified INTEGER NOT NULL DEFAULT 0");
     }
   }
 
@@ -346,7 +356,7 @@ class DatabaseHelper {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     final maps = await db.query('todo',
-        where: 'userId = ? AND status != 2 AND dueDate IS NOT NULL AND dueDate < ?',
+        where: 'userId = ? AND status = 0 AND dueDate IS NOT NULL AND dueDate < ?',
         whereArgs: [userId, now]);
     return maps.map((m) => TodoItem.fromMap(m)).toList();
   }
