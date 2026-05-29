@@ -22,12 +22,13 @@ class _TodoScreenState extends State<TodoScreen> {
   DateTime _selectedDate = DateTime.now();
   DateTime _focusedDate = DateTime.now();
   Set<DateTime> _markedDates = {};
+  bool _showCalendar = false; // 日历默认折叠
 
   // Filters
   String _searchQuery = '';
   int? _statusFilter; // null = all, 0 = pending, 2 = completed
   int? _priorityFilter;
-  String _categoryFilter = '';
+  final String _categoryFilter = '';
   bool _overdueFilter = false;
   final TextEditingController _searchCtrl = TextEditingController();
 
@@ -219,8 +220,12 @@ class _TodoScreenState extends State<TodoScreen> {
     }
   }
 
-  void _startTimerFromTodo(TodoItem todo) {
-    widget.onStartTimerFromTodo?.call(todo);
+  Future<void> _startExecution(TodoItem todo) async {
+    // 标记为进行中并跳转到计时页
+    final provider = context.read<TodoProvider>();
+    final updated = await provider.startExecution(todo);
+    // 跳转到计时页（传更新后的 status=1 todo）
+    widget.onStartTimerFromTodo?.call(updated);
   }
 
   void _applyFilters() {
@@ -247,6 +252,11 @@ class _TodoScreenState extends State<TodoScreen> {
         centerTitle: false,
         actions: [
           IconButton(
+            icon: Icon(_showCalendar ? Icons.calendar_view_month : Icons.calendar_month_outlined),
+            tooltip: _showCalendar ? '收起日历' : '显示日历',
+            onPressed: () => setState(() => _showCalendar = !_showCalendar),
+          ),
+          IconButton(
             icon: const Icon(Icons.today),
             tooltip: '跳转到今天',
             onPressed: () {
@@ -264,11 +274,12 @@ class _TodoScreenState extends State<TodoScreen> {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(
-                  width: 340,
-                  child: _buildCalendar(),
-                ),
-                const VerticalDivider(width: 1),
+                if (_showCalendar)
+                  SizedBox(
+                    width: 340,
+                    child: _buildCalendar(),
+                  ),
+                if (_showCalendar) const VerticalDivider(width: 1),
                 Expanded(
                   flex: 3,
                   child: Column(
@@ -295,7 +306,7 @@ class _TodoScreenState extends State<TodoScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildCalendar(),
+                if (_showCalendar) _buildCalendar(),
                 _buildFilters(),
                 Divider(height: 1, color: Colors.grey.shade300),
                 _buildTodoList(isLoading, todos),
@@ -318,52 +329,85 @@ class _TodoScreenState extends State<TodoScreen> {
       return _isWide(context) ? empty : SizedBox(height: 300, child: empty);
     }
 
+    // 按完成状态分组：未完成(status 0/1)在前，已完成(status 2)在后
+    // 每组内按优先级降序(高→中→低)
+    final incomplete = todos.where((t) => t.status != 2).toList()
+      ..sort((a, b) => b.priority.compareTo(a.priority));
+    final completed = todos.where((t) => t.status == 2).toList()
+      ..sort((a, b) => b.priority.compareTo(a.priority));
+
+    // 构建分组列表项
+    final List<Widget> sections = [];
+    if (incomplete.isNotEmpty) {
+      sections.add(_sectionHeader('待完成', incomplete.length, Colors.orange));
+      sections.addAll(incomplete.map((t) => _buildCard(t)));
+    }
+    if (completed.isNotEmpty) {
+      sections.add(_sectionHeader('已完成', completed.length, Colors.green));
+      sections.addAll(completed.map((t) => _buildCard(t)));
+    }
+
     if (_isWide(context)) {
-      return GridView.builder(
+      return ListView(
         padding: const EdgeInsets.all(8),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          childAspectRatio: 2.8,
-          mainAxisSpacing: 6,
-          crossAxisSpacing: 6,
-        ),
-        itemCount: todos.length,
-        itemBuilder: (_, i) => TodoCard(
-          todo: todos[i],
-          onToggle: () => _toggleComplete(todos[i]),
-          onEdit: () => _editTodo(todos[i]),
-          onDelete: () => _deleteTodo(todos[i]),
-          onStartTimer: todos[i].status != 2
-              ? () => _startTimerFromTodo(todos[i])
-              : null,
-          onSelect: () {
-            if (_canShowDetailInline(context)) {
-              setState(() => _selectedTodo = todos[i]);
-            } else {
-              _showDetailSheet(todos[i]);
-            }
-          },
-          isSelected: _selectedTodo?.id == todos[i].id,
-        ),
+        children: sections,
       );
     }
 
-    return ListView.builder(
+    return ListView(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.only(top: 4, bottom: 80),
-      itemCount: todos.length,
-      itemBuilder: (_, i) => TodoCard(
-        todo: todos[i],
-        onToggle: () => _toggleComplete(todos[i]),
-        onEdit: () => _editTodo(todos[i]),
-        onDelete: () => _deleteTodo(todos[i]),
-        onStartTimer: todos[i].status != 2
-            ? () => _startTimerFromTodo(todos[i])
-            : null,
-        onSelect: () => _showDetailSheet(todos[i]),
-        isSelected: false,
+      children: sections,
+    );
+  }
+
+  Widget _sectionHeader(String label, int count, Color color) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 16,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color)),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text('$count', style: TextStyle(fontSize: 11, color: color)),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildCard(TodoItem todo) {
+    return TodoCard(
+      todo: todo,
+      onToggle: () => _toggleComplete(todo),
+      onEdit: () => _editTodo(todo),
+      onDelete: () => _deleteTodo(todo),
+      onStartExecution: todo.status != 2
+          ? () => _startExecution(todo)
+          : null,
+      onSelect: () {
+        if (_canShowDetailInline(context)) {
+          setState(() => _selectedTodo = todo);
+        } else {
+          _showDetailSheet(todo);
+        }
+      },
+      isSelected: _selectedTodo?.id == todo.id,
     );
   }
 
@@ -633,6 +677,12 @@ class _TodoScreenState extends State<TodoScreen> {
               color: overdue ? Colors.red : null),
           const SizedBox(height: 8),
 
+          // Start time
+          if (todo.startTime != null)
+            _detailRow(Icons.play_circle_outline, '开始时间', _formatDate(todo.startTime!),
+                color: Colors.green),
+          if (todo.startTime != null) const SizedBox(height: 8),
+
           // Recurring
           _detailRow(Icons.repeat, '重复', recurringLabel(todo.recurringRule)),
           const SizedBox(height: 8),
@@ -657,24 +707,30 @@ class _TodoScreenState extends State<TodoScreen> {
           // Actions
           Row(
             children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    _editTodo(todo);
-                  },
-                  icon: const Icon(Icons.edit, size: 16),
-                  label: const Text('编辑'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (!completed && !overdue && widget.onStartTimerFromTodo != null)
+              if (!completed && !overdue)
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _startTimerFromTodo(todo),
-                    icon: const Icon(Icons.timer_outlined, size: 16),
-                    label: const Text('计时'),
+                    onPressed: () => _startExecution(todo),
+                    icon: const Icon(Icons.play_arrow, size: 18),
+                    label: const Text('开始执行'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
                   ),
                 ),
+              if (!completed && !overdue) const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _editTodo(todo),
+                  icon: const Icon(Icons.edit, size: 18),
+                  label: const Text('编辑'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
             ],
           ),
         ],

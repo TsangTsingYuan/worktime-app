@@ -82,6 +82,8 @@ class _AppShellState extends State<AppShell> {
   late final SyncService _syncService;
   bool _autoLoginChecking = true;
 
+  final Map<int, int> _todoByWorkLogId = {}; // workLogId -> todoId (for auto-complete)
+
   @override
   void initState() {
     super.initState();
@@ -108,7 +110,7 @@ class _AppShellState extends State<AppShell> {
       if (_auth.user != null) {
         _settings.loadFromJson(_auth.user!.config);
       }
-      _reminderService.start(_settings, _workLog, _auth);
+      _reminderService.start(_settings, _workLog, _auth, todoProvider: context.read<TodoProvider>());
       _triggerSync();
     }
   }
@@ -124,7 +126,7 @@ class _AppShellState extends State<AppShell> {
   void _onAuthChanged() {
     if (_auth.isLoggedIn && _auth.user != null) {
       _settings.loadFromJson(_auth.user!.config);
-      _reminderService.start(_settings, _workLog, _auth);
+      _reminderService.start(_settings, _workLog, _auth, todoProvider: context.read<TodoProvider>());
       _triggerSync();
     } else {
       _reminderService.stop();
@@ -143,11 +145,58 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _onPendingMessage() {
+    final action = _reminderService.pendingAction;
     final msg = _reminderService.pendingMessage;
-    if (msg != null && mounted) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
+    if (msg == null || !mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        if (action != null) {
+          // 待办提醒：显示可操作按钮
+          return AlertDialog(
+            title: const Row(children: [
+              Icon(Icons.notifications_active, color: Colors.blue),
+              SizedBox(width: 8),
+              Text('待办提醒'),
+            ]),
+            content: Text(msg),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _reminderService.clearPendingMessage();
+                },
+                child: const Text('知道了'),
+              ),
+              if (action.type == 'start' || action.type == 'overdue')
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _reminderService.clearPendingMessage();
+                    _executeTodoFromReminder(action.todoId);
+                  },
+                  icon: const Icon(Icons.play_arrow, size: 18),
+                  label: const Text('开始执行'),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                ),
+              if (action.type == 'end' || action.type == 'overdue')
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _reminderService.clearPendingMessage();
+                    _completeTodoFromReminder(action.todoId);
+                  },
+                  icon: const Icon(Icons.check_circle_outline, size: 18),
+                  label: const Text('标记完成'),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.orange),
+                ),
+            ],
+          );
+        }
+
+        // 普通提醒（久坐/下班）
+        return AlertDialog(
           title: const Row(children: [
             Icon(Icons.notifications_active, color: Colors.blue),
             SizedBox(width: 8),
@@ -156,14 +205,42 @@ class _AppShellState extends State<AppShell> {
           content: Text(msg),
           actions: [
             ElevatedButton(
-              onPressed: () => Navigator.pop(ctx),
+              onPressed: () {
+                Navigator.pop(ctx);
+                _reminderService.clearPendingMessage();
+              },
               child: const Text('知道了'),
             ),
           ],
-        ),
-      );
-      _reminderService.clearPendingMessage();
-    }
+        );
+      },
+    );
+  }
+
+  /// 从提醒弹窗开始执行待办
+  void _executeTodoFromReminder(int todoId) {
+    final todoProvider = context.read<TodoProvider>();
+    final todo = todoProvider.todos.where((t) => t.id == todoId).toList();
+    if (todo.isEmpty) return;
+    // 标记开始执行并跳转计时
+    todoProvider.startExecution(todo.first).then((updated) {
+      _startTimerFromTodo(updated);
+    });
+  }
+
+  /// 从提醒弹窗标记待办完成
+  void _completeTodoFromReminder(int todoId) {
+    final todoProvider = context.read<TodoProvider>();
+    final todo = todoProvider.todos.where((t) => t.id == todoId).toList();
+    if (todo.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    todoProvider.completeOnTimerEnd(
+      todo.first.copyWith(
+        status: 2,
+        updatedAt: now,
+      ),
+      0, // 无关联工作记录
+    );
   }
 
   void _onNavigate(int index) {
@@ -197,8 +274,37 @@ class _AppShellState extends State<AppShell> {
       timerProvider.start(workLogId, todo.title, todo.category.isNotEmpty ? todo.category : '其他');
       if (todo.id != null) {
         todoProvider.updateTodo(todo.copyWith(linkedWorkLogId: workLogId));
+        // 如果待办是"执行中"(status=1)，记录用于结束时自动完成
+        if (todo.status == 1) {
+          _todoByWorkLogId[workLogId] = todo.id!;
+          // 监听 TimerProvider 变化
+          timerProvider.addListener(_onTimerChanged);
+        }
       }
     });
+  }
+
+  void _onTimerChanged() {
+    if (!mounted) return;
+    final timerProvider = context.read<TimerProvider>();
+    final activeIds = timerProvider.activeTimers.map((t) => t.workLogId).toSet();
+    bool changed = false;
+    for (final entry in _todoByWorkLogId.entries.toList()) {
+      if (!activeIds.contains(entry.key)) {
+        // 计时结束，标记待办完成
+        final todoProvider = context.read<TodoProvider>();
+        final todos = todoProvider.todos.where((t) => t.id == entry.value).toList();
+        if (todos.isNotEmpty) {
+          todoProvider.completeOnTimerEnd(todos.first, entry.key);
+        }
+        _todoByWorkLogId.remove(entry.key);
+        changed = true;
+      }
+    }
+    if (changed && _todoByWorkLogId.isEmpty) {
+      // 没有更多执行中的待办，移除监听
+      timerProvider.removeListener(_onTimerChanged);
+    }
   }
 
   @override
