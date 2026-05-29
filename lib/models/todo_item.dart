@@ -5,7 +5,11 @@ class TodoItem {
   final String description;
   final int priority; // 0=低, 1=中, 2=高
   final int status; // 0=待办, 1=进行中, 2=已完成
-  final int? dueDate; // epoch ms
+  final int? dueDate; // 截止时间 epoch ms
+  final int? startTime; // 计划开始时间 epoch ms
+  final int reminderBeforeStart; // 开始前N分钟提醒(0=不提醒)
+  final int reminderBeforeEnd; // 截止前N分钟提醒(0=不提醒)
+  final bool overdueNotified; // 是否已弹出过期通知
   final String category;
   final int? linkedWorkLogId;
   final int? parentId; // 子任务指向父待办
@@ -23,6 +27,10 @@ class TodoItem {
     this.priority = 1,
     this.status = 0,
     this.dueDate,
+    this.startTime,
+    this.reminderBeforeStart = 0,
+    this.reminderBeforeEnd = 0,
+    this.overdueNotified = false,
     this.category = '',
     this.linkedWorkLogId,
     this.parentId,
@@ -41,6 +49,10 @@ class TodoItem {
         'priority': priority,
         'status': status,
         'dueDate': dueDate,
+        'startTime': startTime,
+        'reminderBeforeStart': reminderBeforeStart,
+        'reminderBeforeEnd': reminderBeforeEnd,
+        'overdueNotified': overdueNotified ? 1 : 0,
         'category': category,
         'linkedWorkLogId': linkedWorkLogId,
         'parentId': parentId,
@@ -59,6 +71,10 @@ class TodoItem {
         priority: map['priority'] ?? 1,
         status: map['status'] ?? 0,
         dueDate: map['dueDate'],
+        startTime: map['startTime'],
+        reminderBeforeStart: map['reminderBeforeStart'] ?? 0,
+        reminderBeforeEnd: map['reminderBeforeEnd'] ?? 0,
+        overdueNotified: (map['overdueNotified'] ?? 0) == 1,
         category: map['category'] ?? '',
         linkedWorkLogId: map['linkedWorkLogId'],
         parentId: map['parentId'],
@@ -77,6 +93,10 @@ class TodoItem {
     int? priority,
     int? status,
     int? dueDate,
+    int? startTime,
+    int? reminderBeforeStart,
+    int? reminderBeforeEnd,
+    bool? overdueNotified,
     String? category,
     int? linkedWorkLogId,
     int? parentId,
@@ -94,6 +114,10 @@ class TodoItem {
         priority: priority ?? this.priority,
         status: status ?? this.status,
         dueDate: dueDate ?? this.dueDate,
+        startTime: startTime ?? this.startTime,
+        reminderBeforeStart: reminderBeforeStart ?? this.reminderBeforeStart,
+        reminderBeforeEnd: reminderBeforeEnd ?? this.reminderBeforeEnd,
+        overdueNotified: overdueNotified ?? this.overdueNotified,
         category: category ?? this.category,
         linkedWorkLogId: linkedWorkLogId ?? this.linkedWorkLogId,
         parentId: parentId ?? this.parentId,
