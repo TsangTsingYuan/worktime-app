@@ -30,7 +30,7 @@ class TodoCard extends StatelessWidget {
   final VoidCallback? onToggle;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
-  final VoidCallback? onStartTimer;
+  final VoidCallback? onStartExecution; // 开始执行
   final VoidCallback? onToggleSubtasks;
   final List<TodoItem>? subtasks;
   final bool subtasksExpanded;
@@ -43,7 +43,7 @@ class TodoCard extends StatelessWidget {
     this.onToggle,
     this.onEdit,
     this.onDelete,
-    this.onStartTimer,
+    this.onStartExecution,
     this.onToggleSubtasks,
     this.subtasks,
     this.subtasksExpanded = false,
@@ -110,11 +110,20 @@ class TodoCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                     ],
+                    if (todo.startTime != null && !completed) ...[
+                      Icon(Icons.play_circle_outline, size: 12, color: Colors.green.shade400),
+                      const SizedBox(width: 2),
+                      Text(
+                        '开始 ${_formatDate(todo.startTime!)}',
+                        style: TextStyle(fontSize: 12, color: Colors.green.shade600),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     if (todo.dueDate != null) ...[
                       Icon(Icons.access_time, size: 12, color: overdue ? Colors.red : Colors.grey),
                       const SizedBox(width: 2),
                       Text(
-                        _formatDate(todo.dueDate!),
+                        '截止 ${_formatDate(todo.dueDate!)}',
                         style: TextStyle(
                           fontSize: 12,
                           color: overdue ? Colors.red : Colors.grey.shade600,
@@ -146,13 +155,25 @@ class TodoCard extends StatelessWidget {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!completed && !overdue && onStartTimer != null)
+                if (!completed && !overdue && todo.status != 1 && onStartExecution != null)
                   IconButton(
-                    icon: const Icon(Icons.timer_outlined, size: 20),
-                    tooltip: '开始计时',
-                    onPressed: onStartTimer,
+                    icon: const Icon(Icons.play_arrow, size: 20),
+                    tooltip: '开始执行',
+                    onPressed: onStartExecution,
                     visualDensity: VisualDensity.compact,
-                    color: Colors.blue,
+                    color: Colors.green,
+                  ),
+                if (todo.status == 1)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text('进行中', style: TextStyle(fontSize: 11, color: Colors.orange.shade700)),
+                    ),
                   ),
                 PopupMenuButton<String>(
                   itemBuilder: (ctx) => [
@@ -188,6 +209,7 @@ class TodoCard extends StatelessWidget {
     return Column(
       children: [
         InkWell(
+          onTap: onToggleSubtasks,
           child: Container(
             padding: const EdgeInsets.only(left: 56, right: 16, bottom: 8),
             child: Row(
@@ -204,7 +226,6 @@ class TodoCard extends StatelessWidget {
               ],
             ),
           ),
-          onTap: onToggleSubtasks,
         ),
         if (subtasksExpanded)
           ...subtasks!.map((st) => ListTile(

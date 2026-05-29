@@ -25,6 +25,10 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
   late String _recurringRule;
   bool _hasDueDate = false;
   DateTime? _dueDate;
+  bool _hasStartTime = false;
+  DateTime? _startTime;
+  late int _reminderBeforeStart;
+  late int _reminderBeforeEnd;
 
   @override
   void initState() {
@@ -39,6 +43,12 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
       _hasDueDate = true;
       _dueDate = DateTime.fromMillisecondsSinceEpoch(t!.dueDate!);
     }
+    if (t?.startTime != null) {
+      _hasStartTime = true;
+      _startTime = DateTime.fromMillisecondsSinceEpoch(t!.startTime!);
+    }
+    _reminderBeforeStart = t?.reminderBeforeStart ?? 0;
+    _reminderBeforeEnd = t?.reminderBeforeEnd ?? 0;
   }
 
   @override
@@ -138,7 +148,83 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
             ],
             const SizedBox(height: 12),
 
-            // Due date
+            // ⬇ START — 开始时间（在截止时间之前）
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('设置开始时间', style: TextStyle(fontSize: 14)),
+              value: _hasStartTime,
+              onChanged: (v) {
+                setState(() {
+                  _hasStartTime = v;
+                  if (v && _startTime == null) {
+                    final now = DateTime.now();
+                    _startTime = DateTime(now.year, now.month, now.day, now.hour + 1, 0);
+                  }
+                });
+              },
+            ),
+            if (_hasStartTime && _startTime != null)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.play_circle_outline),
+                title: Text(
+                  '${_startTime!.year}-${_startTime!.month.toString().padLeft(2, '0')}-${_startTime!.day.toString().padLeft(2, '0')}  ${_startTime!.hour.toString().padLeft(2, '0')}:${_startTime!.minute.toString().padLeft(2, '0')}',
+                ),
+                trailing: const Icon(Icons.edit),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _startTime!,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2030),
+                  );
+                  if (picked == null) return;
+                  if (!context.mounted) return;
+                  final time = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay.fromDateTime(_startTime!),
+                  );
+                  if (time == null) return;
+                  if (!context.mounted) return;
+                  setState(() => _startTime = DateTime(
+                    picked.year, picked.month, picked.day, time.hour, time.minute,
+                  ));
+                },
+              ),
+
+            // Reminder before start
+            if (_hasStartTime)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.notifications_outlined, size: 18, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    const Text('开始前', style: TextStyle(fontSize: 13)),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 80,
+                      child: TextField(
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          border: OutlineInputBorder(),
+                        ),
+                        controller: TextEditingController(
+                          text: _reminderBeforeStart > 0 ? _reminderBeforeStart.toString() : '',
+                        ),
+                        onChanged: (v) => _reminderBeforeStart = int.tryParse(v) ?? 0,
+                      ),
+                    ),
+                    const Text(' 分钟', style: TextStyle(fontSize: 13)),
+                  ],
+                ),
+              ),
+
+            const SizedBox(height: 8),
+
+            // Due date（在开始时间之后）
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('设置截止日期', style: TextStyle(fontSize: 14)),
@@ -182,8 +268,39 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
                 },
               ),
 
-            // Recurring
+            // Reminder before end
+            if (_hasDueDate)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.notifications_outlined, size: 18, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    const Text('截止前', style: TextStyle(fontSize: 13)),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 80,
+                      child: TextField(
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          border: OutlineInputBorder(),
+                        ),
+                        controller: TextEditingController(
+                          text: _reminderBeforeEnd > 0 ? _reminderBeforeEnd.toString() : '',
+                        ),
+                        onChanged: (v) => _reminderBeforeEnd = int.tryParse(v) ?? 0,
+                      ),
+                    ),
+                    const Text(' 分钟', style: TextStyle(fontSize: 13)),
+                  ],
+                ),
+              ),
+
             const SizedBox(height: 8),
+
+            // Recurring
             DropdownButtonFormField<String>(
               initialValue: _recurringRule,
               decoration: const InputDecoration(
@@ -239,6 +356,9 @@ class _TodoEditDialogState extends State<TodoEditDialog> {
       priority: _priority,
       category: _categoryCtrl.text.trim(),
       dueDate: _hasDueDate ? _dueDate?.millisecondsSinceEpoch : null,
+      startTime: _hasStartTime ? _startTime?.millisecondsSinceEpoch : null,
+      reminderBeforeStart: _hasStartTime ? _reminderBeforeStart : 0,
+      reminderBeforeEnd: _hasDueDate ? _reminderBeforeEnd : 0,
       recurringRule: _recurringRule,
       status: widget.existing?.status ?? 0,
       linkedWorkLogId: widget.existing?.linkedWorkLogId,
